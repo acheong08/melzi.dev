@@ -92,7 +92,6 @@
 <form class="research-form" onsubmit={submit} novalidate>
   <div class="form-header"><span class="wordmark">Melzi</span><span class="save-note" role="status" aria-live="polite">{saveStatus(save)}</span></div>
   <div class="question-body" bind:this={body}>
-    {#if step==='context' && !complete}<p class="privacy-note">Responses save as you go, including unfinished responses. Server drafts are kept for 30 days after activity and completed responses for 365 days. This device also keeps a draft unless you or your browser clear its storage. Email is only used for the follow-up you select. <a href="/privacy" target="_blank" rel="noopener">Privacy details</a></p>{/if}
     {#if !complete}<p class="step-label">Question {index+1}{#if optional}<span>Optional</span>{/if}</p>{/if}
     <h2 id="research-title" bind:this={heading} tabindex="-1">{title}</h2>
     {#if complete}
@@ -153,7 +152,7 @@
   button{font:inherit;font-size:13px;cursor:pointer;min-height:44px;border-radius:7px;padding:11px 15px}.primary{display:flex;align-items:center;justify-content:center;gap:15px;background:#123c5b;color:#fff;border:1px solid #123c5b;font-weight:500}.primary:hover{background:#205879}.primary svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}.secondary{border:1px solid #a9bfcd;color:#264a64;background:#f9fcfd}.secondary:hover{background:#e0ebf2}.secondary:disabled{opacity:.45;cursor:default}.skip,.finish-links button{border:0;background:transparent;color:#355d77;text-decoration:underline;text-underline-offset:3px}.skip:hover,.finish-links button:hover{color:#102f45}
   .finish-links{display:flex;justify-content:space-between;margin-top:9px}.finish-links button{padding:6px 0;font-size:12px;min-height:36px}.response-summary{margin:0;display:grid;gap:0}.response-summary>div{padding:13px 0;border-top:1px solid #d4e0e7}dt{font-size:11px;color:#567184;margin-bottom:5px}dd{font-size:14px;line-height:1.6;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
   .workaround-details{margin-top:22px}
-  .privacy-note,.save-help,.save-warning{font-size:12px;line-height:1.6;color:#506b7e;margin:0 0 18px}.privacy-note a{color:#123c5b;text-underline-offset:3px}.save-warning{color:#9b2e35;margin-top:16px}.save-help{margin-top:16px}.verification{max-width:100%;margin-top:12px}.verification:empty{display:none}button:disabled{opacity:.5;cursor:default}
+  .save-help,.save-warning{font-size:12px;line-height:1.6;color:#506b7e;margin:0 0 18px}.save-warning{color:#9b2e35;margin-top:16px}.save-help{margin-top:16px}.verification{max-width:100%;margin-top:12px}.verification:empty{display:none}button:disabled{opacity:.5;cursor:default}
   @media(max-width:480px){textarea,input[type=email]{font-size:16px}}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
   @media(max-width:480px){.form-header{padding:20px 50px 18px 19px;gap:12px}.wordmark{font-size:25px}.save-note{font-size:10px;max-width:140px}.question-body{padding:20px 19px 23px}h2{font-size:25px;margin-bottom:20px}.helper{font-size:12px}footer{padding:14px 16px}button{padding:10px 12px;font-size:12px}.primary{gap:9px}.forward-actions{gap:5px}}

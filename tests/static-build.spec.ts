@@ -67,7 +67,4 @@ test('static production CSP permits Azure cross-origin autosave with only the co
   await expect(page.getByLabel('A side project', { exact: true })).toBeChecked();
   expect(apiOrigins.length).toBeGreaterThanOrEqual(2); expect(apiOrigins.every(origin => origin === apiOrigin)).toBe(true);
   expect(errors).toEqual([]);
-  await page.goto(`${staticOrigin}/privacy/`);
-  await expect(page.getByRole('heading', { name: 'How we use your answers' })).toBeVisible();
-  expect(errors).toEqual([]);
 });

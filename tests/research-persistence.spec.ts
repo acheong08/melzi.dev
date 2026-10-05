@@ -22,7 +22,6 @@ const local = (page: Page) => page.evaluate(key => JSON.parse(localStorage.getIt
 test('visiting creates no credential or server record; first partial answer saves losslessly and reloads', async ({ page }) => {
   const api = await mockResearchApi(page); await open(page);
   expect(api.requests).toHaveLength(0); expect(await local(page)).toBeNull();
-  await expect(page.locator('.privacy-note')).toContainText('including unfinished responses');
   await page.getByRole('radio', { name: 'Something else', exact: true }).check();
   await page.getByRole('textbox', { name: 'What are you working on? (optional)' }).fill('  unfinished details  ');
   expect((await local(page)).answers.contextDetails).toBe('  unfinished details  ');

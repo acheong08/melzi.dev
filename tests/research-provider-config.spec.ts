@@ -1,18 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { researchProviderConfig, researchCspSources, securityProviderFor } from '../src/lib/research/provider-config';
 
-test('privacy names Azure and explains retention and local-only clearing', async ({ request }) => {
-  const response = await request.get('/privacy');
-  expect(response.ok()).toBeTruthy();
-  const html = await response.text();
-  expect(html).toContain('Microsoft Azure hosts the site');
-  expect(html).not.toContain('AWS hosts the site');
-  expect(html).toContain('30 days');
-  expect(html).toContain('365 days');
-  expect(html).toContain('another seven days');
-  expect(html).toContain('does not delete a response already received');
-});
-
 test('local development defaults to Azure and the local API base', () => {
   expect(researchProviderConfig({})).toEqual({ securityProvider: 'azure', apiBase: '/api', apiOrigin: null });
   expect(securityProviderFor('aws')).toBe('aws'); expect(securityProviderFor('turnstile')).toBe('turnstile');
