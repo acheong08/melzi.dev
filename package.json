@@ -10,7 +10,10 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test": "playwright test"
+		"test": "playwright test",
+		"test:security": "bun test api/backend/validation.test.ts api/backend/admission.test.ts api/edge/gateway.test.ts",
+		"build:backend": "node api/build-backend.mjs",
+		"build:azure": "node api/build-azure.mjs"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.63.0",
@@ -18,6 +21,7 @@
 		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
 		"@types/node": "^26.6.4",
+		"esbuild": "^0.28.2",
 		"svelte": "^5.57.1",
 		"svelte-check": "^4.6.0",
 		"typescript": "^6.0.3",
@@ -26,5 +30,12 @@
 	"imports": {
 		"#lib": "./src/lib/index.js",
 		"#lib/*": "./src/lib/*"
+	},
+	"dependencies": {
+		"@aws-sdk/client-lambda": "^3.1146.0",
+		"@aws-sdk/client-secrets-manager": "^3.1146.0",
+		"@azure/functions": "4.16.5",
+		"aws4fetch": "^1.0.20",
+		"pg": "^8.23.1"
 	}
 }

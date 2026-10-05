@@ -1,0 +1,91 @@
+{
+  "provider": "azure",
+  "runtime": { "name": "node", "version": "22", "programmingModel": "@azure/functions 4.16.5" },
+  "buildCommand": "node scripts/build-azure.mjs",
+  "manifest": "dist-azure/manifest.json",
+  "zipLayout": ["host.json", "index.js", "package.json", "node_modules/@azure/functions", "node_modules/@azure/functions-extensions-base", "node_modules/cookie"],
+  "packaging": {
+    "main": "index.js",
+    "moduleType": "commonjs",
+    "remoteNpmBuildRequired": false,
+    "deployment": "Use the existing Flex app's supported OneDeploy/config-zip path with remote build disabled; do not create another server or add legacy WEBSITE_RUN_FROM_PACKAGE settings.",
+    "extensionBundle": "Microsoft.Azure.Functions.ExtensionBundle [4.*, 5.0.0); platform host may download its Microsoft binding bundle.",
+    "hostAndDeploymentStorage": "Infrastructure must configure authenticated host/deployment storage; storage credentials never belong in frontend assets."
+  },
+  "commonAppSettings": {
+    "CLOUD_PROVIDER": "azure",
+    "PGHOST": "<canonical server FQDN ending .postgres.database.azure.com>",
+    "PGPORT": "5432",
+    "PGDATABASE": "melzi_research",
+    "PGUSER": "melzi_research_app",
+    "PGPASSWORD": "<encrypted server-only app-role password>"
+  },
+  "api": {
+    "artifact": "dist-azure/api.zip",
+    "functionName": "researchDraft",
+    "path": "/api/v1/draft",
+    "methods": ["GET", "POST", "PUT", "OPTIONS"],
+    "authLevel": "anonymous",
+    "authorization": "GET/POST/PUT require Authorization: Bearer <canonical unpadded base64url encoding of exactly 32 bytes>; incoming x-melzi-* and x-ms-* owner headers are ignored.",
+    "additionalAppSettings": {
+      "API_RESOURCE_ID": "/subscriptions/<UUID>/resourceGroups/<group>/providers/Microsoft.Web/sites/<this API app>",
+      "AZURE_API_VERSION": "2025-03-01",
+      "ALLOWED_ORIGINS": "<comma-separated exact canonical HTTPS origins, with no trailing slash>",
+      "FUNCTIONS_REQUEST_BODY_SIZE_LIMIT": "65536"
+    },
+    "corsOwner": "application entry only; leave platform App Service CORS empty/disabled and EasyAuth disabled",
+    "cors": { "allowMethods": ["GET", "POST", "PUT"], "allowHeaders": ["Authorization", "Content-Type"], "exposeHeaders": ["Retry-After"], "maxAgeSeconds": 600, "allowCredentials": false },
+    "managedIdentityActionsOnExactApiResource": ["Microsoft.Web/sites/read", "Microsoft.Web/sites/stop/action"],
+    "scale": { "instanceMemoryMB": 512, "maximumInstanceCount": 1, "httpPerInstanceConcurrency": 1, "alwaysReadyInstances": 0 },
+    "functionTimeoutSeconds": 10
+  },
+  "housekeeping": {
+    "artifact": "dist-azure/housekeeping.zip",
+    "functionName": "researchHousekeeping",
+    "trigger": "timer only; no HTTP function registration",
+    "scheduleUTC": "0 0 * * * *",
+    "runOnStartup": false,
+    "useMonitor": true,
+    "additionalAppSettings": { "API_RESOURCE_ID": "<exact separate API app ARM resource ID>", "AZURE_API_VERSION": "2025-03-01" },
+    "managedIdentityActionsOnExactApiResource": ["Microsoft.Web/sites/read", "Microsoft.Web/sites/start/action", "Microsoft.Web/sites/stop/action"],
+    "functionTimeoutSeconds": 20,
+    "manualInvocation": "Parent may use the Azure host admin endpoint with a privately held master key; never add an HTTP trigger for this purpose."
+  },
+  "migration": {
+    "artifact": "dist-azure/migration.zip",
+    "functionName": "researchMigration",
+    "path": "/api/migrate",
+    "methods": ["POST"],
+    "authLevel": "function",
+    "request": { "action": "migrate" },
+    "appSettingOverrides": { "PGUSER": "<database admin username>", "PGPASSWORD": "<encrypted admin password>", "PG_APP_PASSWORD": "<new app-role password>", "PG_APP_USER": "melzi_research_app (optional; no other value accepted)" },
+    "databaseMustAlreadyExist": true,
+    "appRoleConnectionLimit": 10,
+    "functionTimeoutSeconds": 30,
+    "lifecycle": "Temporary separate app only; invoke using a privately held function/host key and delete the app after successful migration."
+  },
+  "verification": {
+    "artifact": "dist-azure/verification.zip",
+    "functionName": "researchVerification",
+    "path": "/api/verify",
+    "methods": ["POST"],
+    "authLevel": "function",
+    "additionalAppSettings": { "API_RESOURCE_ID": "<exact API app resource ID>", "VERIFICATION_RUN_ID": "<canonical UUIDv4 also supplied as event.runId>" },
+    "actions": ["probe", "quotaSnapshot", "armQuota", "prepareRollover", "restoreSnapshot", "expireFixture", "cleanupFixture", "cleanupAbandonedRun"],
+    "armQuota": "Pass the signed quotaSnapshot as snapshot; sets requests=9999 without invoking admission or ARM. Then hit the REAL API to prove its worker persists auto_closed before self-stop.",
+    "counterProof": "observed_invocations increments before every executing public request, even exhausted ones. After ARM Stopped, HTTP probes must leave observed_invocations unchanged; capped requests=10000 alone is insufficient proof.",
+    "snapshotRestoration": "Signed snapshots include observed_invocations along with requests/writes/creates/auto_closed. Restore rejects changed state and UTC rollover and restores only current/prior day metadata.",
+    "requiresArmManagedIdentityPermissions": false,
+    "functionTimeoutSeconds": 30,
+    "lifecycle": "Temporary separate app using app DB credentials only; function-key authenticated; remove after guarded fixture/quota cleanup."
+  },
+  "platformInjectedIdentitySettings": ["IDENTITY_ENDPOINT", "IDENTITY_HEADER"],
+  "safetyNotes": [
+    "Do not set or copy platform-injected identity endpoint/header values; code only accepts loopback or link-local identity destinations and exact public-cloud ARM site resource IDs.",
+    "PostgreSQL TLS uses rejectUnauthorized=true, exact server hostname and the Node default trust store; Azure artifacts contain no RDS CA bundle.",
+    "Azure quota closure commits before ARM stop while a five-second bounded session advisory lock serializes timer reopening. A failed/ambiguous stop is retried on later exhausted invocations even if auto_closed is already true.",
+    "The cutoff request returns daily_limit 429 if its worker survives; real self-stop may terminate its response. Client must retain pending mutation identity and local data.",
+    "Only prior-day quota markers may auto-reopen. Failed/ambiguous reopening is best-effort stopped again with no automatic retry marker. Disable the timer before manual/emergency stops and diagnose overlapping stop causes.",
+    "No reliance on dailyMemoryTimeQuota for Flex. Instance limits, counters and stop calls are not absolute spending caps; propagation, in-flight work and ancillary storage/database/network billing remain."
+  ]
+}
