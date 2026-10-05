@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mockResearchApi } from './research-api-mock';
 import { STORAGE_KEY } from '../src/lib/research/persistence';
+import { networkInterfaces } from 'node:os';
+const lanIp = Object.values(networkInterfaces()).flat().filter(i => i && !i.internal && i.family === 'IPv4').map(i => i.address).find(ip => /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip));
 
 async function open(page: Page) {
   await page.goto('/');
@@ -11,9 +13,14 @@ async function choose(page: Page, name: string) {
   await page.getByRole('radio', { name, exact: true }).check();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
 }
+async function skip(page: Page) {
+  await page.getByRole('button', { name: 'Skip', exact: true }).click();
+}
 async function finalStep(page: Page) {
-  await choose(page, 'A side project'); await choose(page, 'Exploring an idea');
-  await choose(page, 'Not a problem'); await choose(page, 'Nothing yet, just sharing feedback');
+  await choose(page, 'A side project'); await skip(page); await choose(page, 'Exploring an idea');
+  await choose(page, 'Not a problem');
+  await page.getByRole('textbox', { name: 'Email address', exact: true }).fill('person@example.com');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
 }
 const thanks = (page: Page) => page.getByRole('heading', { name: 'Thanks for helping shape Melzi.', exact: true });
 const status = (page: Page) => page.locator('.save-note');
@@ -25,12 +32,13 @@ test('visiting creates no credential or server record; first partial answer save
   await page.getByRole('radio', { name: 'Something else', exact: true }).check();
   await page.getByRole('textbox', { name: 'What are you working on? (optional)' }).fill('  unfinished details  ');
   expect((await local(page)).answers.contextDetails).toBe('  unfinished details  ');
-  await expect(status(page)).toHaveText('Saved');
+  await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
+  await expect.poll(() => api.requests.some(r => r.method === 'POST')).toBe(true);
   const creation = api.requests.find(r => r.method === 'POST')!;
   expect(creation.token).toMatch(/^[A-Za-z0-9_-]{43}$/); expect(creation.challenge).toBeUndefined();
   expect(creation.hash).toBeUndefined(); expect(api.challengeLoads).toBe(0);
   await expect(page.locator('.verification')).toHaveCount(0);
-  expect(creation.body).toMatchObject({ schemaVersion: 4, completed: false, expectedRevision: 0, answers: { context: 'other', contextDetails: '  unfinished details  ', stage: '', stackTools: [], email: '' } });
+  expect(creation.body).toMatchObject({ schemaVersion: 5, completed: false, expectedRevision: 0, answers: { context: 'other', contextDetails: '  unfinished details  ', stage: '', stackTools: [], stackWhy: [] } });
   await page.reload(); await expect(page.locator('.story-track')).toHaveAttribute('data-scroll-ready', 'true'); await page.getByRole('button', { name: 'Help shape Melzi', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'What are you working on? (optional)' })).toHaveValue('  unfinished details  ');
   expect(api.requests.some(r => r.method === 'GET')).toBe(true);
@@ -38,7 +46,8 @@ test('visiting creates no credential or server record; first partial answer save
 });
 
 test('offline final submission stays pending through reload and succeeds only after reconnect', async ({ page, context }) => {
-  const api = await mockResearchApi(page); await open(page); await finalStep(page); await expect(status(page)).toHaveText('Saved');
+  const api = await mockResearchApi(page); await open(page); await finalStep(page);
+  await expect(status(page)).toHaveText('Only 1 question left :)');
   await context.setOffline(true);
   await page.getByRole('textbox', { name: 'Anything you currently use that you absolutely HATE?' }).fill('Offline printer');
   await page.getByRole('button', { name: 'Submit feedback', exact: true }).click();
@@ -62,7 +71,8 @@ test('lost acknowledgement retries the identical mutation before sending newer a
   await page.getByRole('textbox', { name: 'What are you working on? (optional)' }).fill('Original');
   await expect(status(page)).toHaveText('Saved on this device, retrying');
   await page.getByRole('textbox', { name: 'What are you working on? (optional)' }).fill('Newer local edit');
-  await expect(status(page)).toHaveText('Saved');
+  await expect.poll(() => api.requests.filter(r => r.body).length).toBeGreaterThanOrEqual(3);
+  await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
   const writes = api.requests.filter(r => r.body);
   expect(writes.length).toBeGreaterThanOrEqual(3);
   expect(writes[1].body).toEqual(writes[0].body);
@@ -77,40 +87,42 @@ test('reload replays a persisted unacknowledged mutation, not a new creation', a
   await expect(status(page)).toHaveText('Saved on this device, retrying');
   const original = api.requests.find(r => r.body)!.body;
   await page.reload(); await expect(page.locator('.story-track')).toHaveAttribute('data-scroll-ready', 'true'); await page.getByRole('button', { name: 'Help shape Melzi', exact: true }).click();
-  await expect(status(page)).toHaveText('Saved');
+  await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
   expect(api.requests.filter(r => r.body)[1].body).toEqual(original); expect(api.records.size).toBe(1);
 });
 
-test('final success waits for acknowledgement and Back returns to an unfinished draft', async ({ page }) => {
-  const api = await mockResearchApi(page); await open(page); await finalStep(page); await expect(status(page)).toHaveText('Saved');
+test('final success waits for acknowledgement before showing the thank-you page', async ({ page }) => {
+  const api = await mockResearchApi(page); await open(page); await finalStep(page);
+  await expect(status(page)).toHaveText('Only 1 question left :)');
   api.holdFinal = true; await page.getByRole('button', { name: 'Submit feedback', exact: true }).click();
   await expect(page.getByText('Submission pending.', { exact: false })).toBeVisible(); await expect(thanks(page)).toHaveCount(0);
   await expect.poll(() => !!api.releaseFinal).toBe(true); api.releaseFinal!(); await expect(thanks(page)).toBeVisible();
-  await page.getByRole('button', { name: 'Back to edit', exact: true }).click(); await expect(thanks(page)).toHaveCount(0);
-  await expect(status(page)).toHaveText('Saved'); expect([...api.records.values()][0].completed).toBe(false);
+  await expect(status(page)).toHaveText('Response saved.');
+  await expect(page.getByRole('button', { name: 'Back to edit', exact: true })).toHaveCount(0);
+  expect([...api.records.values()][0].completed).toBe(true);
 });
 
 for (const code of [404, 410]) test(`${code} preserves local answers and requires an explicit new session`, async ({ page }) => {
-  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await expect(status(page)).toHaveText('Saved');
+  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Only 4 questions left :)');
   const token = (await local(page)).token; api.status = code;
   await page.getByRole('radio', { name: 'Exploring an idea', exact: true }).check();
   await expect(status(page)).toHaveText('Saved session unavailable');
   expect((await local(page)).answers.context).toBe('side-project'); expect((await local(page)).token).toBe(token);
-  api.status = 0; await page.getByRole('button', { name: 'Start a fresh session with these answers' }).click(); await expect(status(page)).toHaveText('Saved');
+  api.status = 0; await page.getByRole('button', { name: 'Start a fresh session with these answers' }).click(); await expect(status(page)).toHaveText('Only 4 questions left :)');
   expect((await local(page)).token).not.toBe(token); expect((await local(page)).answers.stage).toBe('idea');
 });
 
 test('revision conflicts pause writes and explicit reload adopts server answers', async ({ page }) => {
-  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await expect(status(page)).toHaveText('Saved');
+  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Only 4 questions left :)');
   const record = [...api.records.values()][0]; record.revision++; record.answers.context = 'startup';
   await page.getByRole('radio', { name: 'Exploring an idea', exact: true }).check();
   await expect(status(page)).toHaveText('Save paused: draft conflict'); expect((await local(page)).answers.context).toBe('side-project');
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Reload saved draft' }).click();
-  await expect(status(page)).toHaveText('Saved'); expect((await local(page)).answers.context).toBe('startup');
+  await expect(status(page)).toHaveText('Should only take 2 minutes to complete'); expect((await local(page)).answers.context).toBe('startup');
 });
 
 test('storage events pause writes rather than silently overwriting another tab', async ({ page }) => {
-  await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await expect(status(page)).toHaveText('Saved');
+  await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Only 4 questions left :)');
   await page.evaluate(key => { const value = JSON.parse(localStorage.getItem(key)!); value.answers.context = 'startup'; const raw = JSON.stringify(value); localStorage.setItem(key, raw); window.dispatchEvent(new StorageEvent('storage', { key, newValue: raw })); }, STORAGE_KEY);
   await expect(status(page)).toHaveText('Save paused: draft conflict');
   await page.getByRole('radio', { name: 'Exploring an idea', exact: true }).check();
@@ -126,7 +138,7 @@ for (const mode of ['corrupt', 'denied', 'full']) test(`${mode} local storage ne
   }, { key: STORAGE_KEY, mode });
   await open(page); await page.getByRole('radio', { name: 'A side project', exact: true }).check();
   await expect(status(page)).toHaveText('Not saved on this device'); await expect(page.locator('.save-warning')).toBeVisible();
-  expect(api.requests).toHaveLength(0); await expect(page.getByRole('button', { name: 'Download answers' })).toBeVisible();
+  expect(api.requests).toHaveLength(0); await expect(page.getByRole('button', { name: 'Download answers' })).toHaveCount(0);
 });
 
 test('closing the modal does not stop saving; clear local never deletes the remote record', async ({ page }) => {
@@ -135,13 +147,14 @@ test('closing the modal does not stop saving; clear local never deletes the remo
   await page.getByRole('button', { name: 'Help shape Melzi', exact: true }).click();
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Clear local draft' }).click();
   expect(await local(page)).toBeNull(); expect(api.records.size).toBe(1);
-  await page.getByRole('radio', { name: 'Something else', exact: true }).check(); await expect(status(page)).toHaveText('Saved'); expect(api.records.size).toBe(2);
+  await page.getByRole('radio', { name: 'Something else', exact: true }).check(); await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
+  await expect.poll(() => api.records.size).toBe(2);
 });
 
 test('HTTP network preview keeps local answers across reload without insecure API traffic or errors', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const api = await mockResearchApi(page);
-  await page.goto(process.env.RESEARCH_INSECURE_TEST_URL || 'http://100.64.0.3:4174/');
+  await page.goto(process.env.RESEARCH_INSECURE_TEST_URL || `http://${lanIp}:4174/`);
   await expect(page.locator('.story-track')).toHaveAttribute('data-scroll-ready', 'true');
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
   await page.getByRole('button', { name: 'Help shape Melzi', exact: true }).click();
@@ -160,7 +173,8 @@ test('HTTP network preview keeps local answers across reload without insecure AP
 });
 
 for (const code of [429, 503]) test(`${code} explains temporary server limits without claiming final success`, async ({ page }) => {
-  const api = await mockResearchApi(page); await open(page); await finalStep(page); await expect(status(page)).toHaveText('Saved');
+  const api = await mockResearchApi(page); await open(page); await finalStep(page);
+  await expect(status(page)).toHaveText('Only 1 question left :)');
   api.status = code; api.retryAfter = '1';
   await page.getByRole('button', { name: 'Submit feedback', exact: true }).click();
   await expect(page.locator('.save-warning')).toContainText(code === 429 ? 'temporarily disabled by a service limit' : 'temporarily unavailable');

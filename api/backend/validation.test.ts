@@ -2,16 +2,16 @@
 // Imports validation/model only: no handler, database, AWS SDK, or credentials.
 import { describe, test, expect } from 'bun:test';
 import { ApiFailure, parseMutation, projectedResponse, validateAnswers } from './validation.ts';
-import { choices, emptyAnswers, stepsFor, type Answers } from '../../src/lib/research/form.ts';
+import { choices, emptyAnswers, stackWhyOptions, stepsFor, type Answers } from '../../src/lib/research/form.ts';
 import { MAX_REQUEST_BYTES, type SaveRequest } from '../../src/lib/research/persistence-contract.ts';
 
 const mutationId = '462468e4-df28-4ad1-bcd3-34cd95e404aa';
 function request(overrides: Record<string, unknown> = {}) {
-  return { schemaVersion: 4, answers: emptyAnswers(), step: 'context', completed: false, expectedRevision: 0, mutationId, ...overrides };
+  return { schemaVersion: 5, answers: emptyAnswers(), step: 'context', completed: false, expectedRevision: 0, mutationId, ...overrides };
 }
 function parse(overrides: Record<string, unknown> = {}): SaveRequest { return parseMutation(JSON.stringify(request(overrides))); }
 function finalAnswers(overrides: Partial<Answers> = {}): Answers {
-  return { ...emptyAnswers(), context: 'startup', stage: 'building', burden: 'time', next: 'none', ...overrides };
+  return { ...emptyAnswers(), context: 'startup', stage: 'building', burden: 'time', role: 'founder', stackTools: ['AWS'], stackWhy: ['cost'], problemCategory: 'setup', workaround: 'nothing', owner: 'me', email: 'person@example.com', ...overrides };
 }
 function expectFailure(callback: () => unknown, status = 400, code?: string) {
   let caught: unknown;
@@ -31,7 +31,7 @@ describe('partial and completed draft validation', () => {
     expectFailure(() => parse({ answers: { context: 'other' } }), 400, 'invalid_answers');
   });
   test('unfinished drafts may contain an incomplete email while the user types', () => {
-    const result = parse({ answers: finalAnswers({ next: 'chat', email: 'person@' }), step: 'contact' });
+    const result = parse({ answers: finalAnswers({ email: 'person@' }), step: 'contact' });
     expect(result.answers.email).toBe('person@');
     expect(result.completed).toBe(false);
   });
@@ -39,24 +39,37 @@ describe('partial and completed draft validation', () => {
     const result = parse({ answers: finalAnswers(), completed: true, step: 'hate', expectedRevision: 8 });
     expect(result.completed).toBe(true);
     expect(result.answers.problem).toBe('');
-    expect(result.answers.stackTools).toEqual([]);
+    expect(result.answers.outcome).toBe('');
   });
-  for (const field of ['context', 'stage', 'burden', 'next'] as const) {
+  for (const field of ['context', 'stage', 'burden', 'role', 'owner', 'problemCategory'] as const) {
     test(`completion requires ${field}`, () => {
       expectFailure(() => parse({ answers: finalAnswers({ [field]: '' }), completed: true, step: 'hate' }), 400, 'incomplete');
     });
   }
-  for (const next of ['try', 'chat', 'updates']) {
-    test(`${next} completion requires a valid email`, () => {
-      expect(parse({ answers: finalAnswers({ next, email: 'person+research@example.com' }), completed: true, step: 'hate' }).completed).toBe(true);
-      for (const email of ['', '   ', 'person', 'person@', '@example.com', 'person@@example.com', 'per son@example.com', 'person@exa mple.com']) {
-        expectFailure(() => parse({ answers: finalAnswers({ next, email }), completed: true, step: 'hate' }), 400, 'invalid_email');
-      }
+  for (const [field, empty] of [['stackTools', []], ['stackWhy', []]] as const) {
+    test(`completion requires a ${field} selection`, () => {
+      expectFailure(() => parse({ answers: finalAnswers({ [field]: empty }), completed: true, step: 'hate' }), 400, 'incomplete');
     });
   }
-  test('no-follow-up completion does not require or retain an email', () => {
-    const result = parse({ answers: finalAnswers({ next: 'none', email: 'old@example.com' }), completed: true, step: 'hate' });
-    expect(result.answers.email).toBe('');
+  test('completion requires the workaround and its outcome once a fix was tried', () => {
+    expectFailure(() => parse({ answers: finalAnswers({ workaround: '' }), completed: true, step: 'hate' }), 400, 'incomplete');
+    expectFailure(() => parse({ answers: finalAnswers({ workaround: 'tried', outcome: '' }), completed: true, step: 'hate' }), 400, 'incomplete');
+    expect(parse({ answers: finalAnswers({ workaround: 'tried', outcome: 'solved' }), completed: true, step: 'hate' }).completed).toBe(true);
+  });
+  test('completion requires the anticipated-issues answer instead of the experienced category', () => {
+    expect(parse({ answers: { ...finalAnswers(), burden: 'early', anticipateIssues: 'unsure', problemCategory: '' }, completed: true, step: 'hate' }).completed).toBe(true);
+    expectFailure(() => parse({ answers: { ...finalAnswers(), burden: 'early', anticipateIssues: '', problemCategory: '' }, completed: true, step: 'hate' }), 400, 'incomplete');
+    expect(parse({ answers: { ...finalAnswers(), burden: 'none' }, completed: true, step: 'hate' }).completed).toBe(true);
+  });
+  test('cost complaints require the spend answer on completion', () => {
+    expectFailure(() => parse({ answers: finalAnswers({ problemCategory: 'cost', spend: '' }), completed: true, step: 'hate' }), 400, 'incomplete');
+    expect(parse({ answers: finalAnswers({ problemCategory: 'cost', spend: '50-249' }), completed: true, step: 'hate' }).completed).toBe(true);
+  });
+  test('completion always requires a valid email', () => {
+    expect(parse({ answers: finalAnswers({ email: 'person+research@example.com' }), completed: true, step: 'hate' }).completed).toBe(true);
+    for (const email of ['', '   ', 'person', 'person@', '@example.com', 'person@@example.com', 'per son@example.com', 'person@exa mple.com']) {
+      expectFailure(() => parse({ answers: finalAnswers({ email }), completed: true, step: 'hate' }), 400, 'invalid_email');
+    }
   });
   test('completed requests must identify the final question', () => {
     expectFailure(() => parse({ answers: finalAnswers(), completed: true, step: 'context' }), 400, 'incomplete');
@@ -74,7 +87,7 @@ describe('strict shape, schema, UUID, revision, and paths', () => {
     test(`reject invalid/non-object JSON (${JSON.stringify(raw)})`, () => expectFailure(() => parseMutation(raw)));
   }
   test('reject unknown/missing top-level keys, including ownership metadata', () => {
-    for (const [key, value] of Object.entries({ owner: 'other', token_hash: 'forged', revision: 99, status: 'submitted', expiresAt: '2099-01-01', updatedAt: '2099-01-01', schema: 4 })) {
+    for (const [key, value] of Object.entries({ owner: 'other', token_hash: 'forged', revision: 99, status: 'submitted', expiresAt: '2099-01-01', updatedAt: '2099-01-01', schema: 5 })) {
       expectFailure(() => parse({ [key]: value }), 400, 'invalid_request');
     }
     for (const key of Object.keys(request())) {
@@ -96,7 +109,7 @@ describe('strict shape, schema, UUID, revision, and paths', () => {
     for (const value of [null, [], 'text', 1, new Date(), Object.create(null)]) expectFailure(() => validateAnswers(value), 400, 'invalid_answers');
   });
   test('schema version and completed are not coercible', () => {
-    for (const schemaVersion of [3, 5, '4', null, false]) expectFailure(() => parse({ schemaVersion }), 400, 'invalid_request');
+    for (const schemaVersion of [3, 4, '5', null, false]) expectFailure(() => parse({ schemaVersion }), 400, 'invalid_request');
     for (const completed of ['false', 0, 1, null]) expectFailure(() => parse({ completed }), 400, 'invalid_request');
   });
   test('accept canonical UUID v4 values with either hex case', () => {
@@ -113,10 +126,10 @@ describe('strict shape, schema, UUID, revision, and paths', () => {
     for (const expectedRevision of [-1, 0.5, 1_000_001, Number.MAX_SAFE_INTEGER + 1, '0', '1', null, false, NaN, Infinity]) expectFailure(() => parse({ expectedRevision }), 400, 'invalid_request');
   });
   test('unknown or branch-inapplicable step IDs are rejected', () => {
-    for (const step of ['not-a-step', 'stack', 'workaround', 'outcome', 'startup', 'contact', 1, null]) expectFailure(() => parse({ step }), 400, 'invalid_step');
+    for (const step of ['not-a-step', 'stack', 'workaround', 'outcome', 'startup', 'role', 'sideProject', 1, null]) expectFailure(() => parse({ step }), 400, 'invalid_step');
   });
   test('all applicable paths from a populated draft are accepted', () => {
-    const answers = finalAnswers({ context: 'startup', stage: 'stable', burden: 'slows', problemCategory: 'cost', workaround: 'tried', next: 'chat', email: 'in-progress@' });
+    const answers = finalAnswers({ stage: 'stable', burden: 'slows', problemCategory: 'cost', workaround: 'tried', email: 'in-progress@' });
     for (const step of stepsFor(answers)) expect(parse({ answers, step }).step).toBe(step);
   });
 });
@@ -128,7 +141,7 @@ describe('text, choices, tools, and byte limits', () => {
       for (const invalid of ['not-a-choice', ' STARTUP ', 1, true, null, {}, []]) expectFailure(() => validateAnswers({ ...emptyAnswers(), [field]: invalid }), 400, 'invalid_answers');
     });
   }
-  for (const field of ['contextDetails', 'stack', 'problem', 'workingWell', 'workaroundDetails', 'hate'] as const) {
+  for (const field of ['contextDetails', 'stack', 'problem', 'workingWell', 'workaroundDetails', 'hate', 'sideProject', 'stackWhyOther'] as const) {
     test(`${field} has a 2000 UTF-16-unit bound and rejects wrong types`, () => {
       expect(() => validateAnswers({ ...emptyAnswers(), [field]: 'x'.repeat(2_000) })).not.toThrow();
       expectFailure(() => validateAnswers({ ...emptyAnswers(), [field]: 'x'.repeat(2_001) }), 400, 'invalid_answers');
@@ -138,11 +151,16 @@ describe('text, choices, tools, and byte limits', () => {
     });
   }
   test('email has a 254-unit bound, also while incomplete', () => {
-    expect(() => validateAnswers({ ...emptyAnswers(), next: 'chat', email: 'e'.repeat(254) })).not.toThrow();
-    expectFailure(() => validateAnswers({ ...emptyAnswers(), next: 'chat', email: 'e'.repeat(255) }), 400, 'invalid_answers');
+    expect(() => validateAnswers({ ...emptyAnswers(), email: 'e'.repeat(254) })).not.toThrow();
+    expectFailure(() => validateAnswers({ ...emptyAnswers(), email: 'e'.repeat(255) }), 400, 'invalid_answers');
+  });
+  test('phone has a 40-unit bound and is always optional', () => {
+    expect(() => validateAnswers({ ...emptyAnswers(), phone: '1'.repeat(40) })).not.toThrow();
+    expectFailure(() => validateAnswers({ ...emptyAnswers(), phone: '1'.repeat(41) }), 400, 'invalid_answers');
+    expect(validateAnswers({ ...emptyAnswers(), phone: '+1 555 000 0000' }).phone).toBe('+1 555 000 0000');
   });
   test('NUL and lone surrogates are rejected in every text field even if hidden', () => {
-    for (const field of Object.keys(emptyAnswers()).filter(key => key !== 'stackTools')) {
+    for (const field of Object.keys(emptyAnswers()).filter(key => key !== 'stackTools' && key !== 'stackWhy')) {
       for (const value of ['before\0after', '\ud800', '\udfff', 'x\ud800y']) expectFailure(() => validateAnswers({ ...emptyAnswers(), [field]: value }), 400, 'invalid_answers');
     }
   });
@@ -163,6 +181,12 @@ describe('text, choices, tools, and byte limits', () => {
   });
   test('tool duplicates are rejected after case and whitespace normalization', () => {
     for (const stackTools of [['PostgreSQL', 'PostgreSQL'], ['PostgreSQL', 'postgresql'], ['Bespoke Tool', '  bespoke   tool ']]) expectFailure(() => validateAnswers({ ...emptyAnswers(), stackTools }), 400, 'invalid_answers');
+  });
+  test('stack reasons are limited to the declared enum, deduplicated, and capped', () => {
+    expect(validateAnswers({ ...emptyAnswers(), stage: 'building', stackTools: ['AWS'], stackWhy: ['cost', ' ease '] }).stackWhy).toEqual(['cost', 'ease']);
+    expect(validateAnswers({ ...emptyAnswers(), stage: 'building', stackTools: ['AWS'], stackWhy: stackWhyOptions.map(option => option.value) }).stackWhy).toHaveLength(stackWhyOptions.length);
+    for (const stackWhy of [['not-a-reason'], ['cost', 'COST'], ['ai', 'AI'], 'not-an-array', null, [null], [42]]) expectFailure(() => validateAnswers({ ...emptyAnswers(), stage: 'building', stackTools: ['AWS'], stackWhy }), 400, 'invalid_answers');
+    expect(validateAnswers({ ...emptyAnswers(), stackWhy: ['cost'] }).stackWhy).toEqual([]);
   });
   test('raw request ceiling is exactly 65536 UTF-8 bytes, including JSON whitespace', () => {
     const body = JSON.stringify(request({ answers: { ...emptyAnswers(), hate: '日本語'.repeat(500) } }));
@@ -188,7 +212,7 @@ describe('text, choices, tools, and byte limits', () => {
 });
 
 describe('server-side branch pruning and final projection', () => {
-  const populated = (): Answers => ({ ...emptyAnswers(), context: 'startup', contextDetails: 'hidden context', stage: 'stable', stack: 'custom stack', stackTools: ['PostgreSQL'], burden: 'slows', problemCategory: 'other', problem: 'real pain', workingWell: 'hidden positive', workaround: 'tried', workaroundDetails: 'details', outcome: 'partly', timeSpent: '4-8', role: 'founder', owner: 'me', spend: '50-249', next: 'chat', email: 'person@example.com', hate: 'Nothing else' });
+  const populated = (): Answers => ({ ...emptyAnswers(), context: 'startup', contextDetails: 'hidden context', sideProject: 'hidden notes', stage: 'stable', stack: 'hidden stack text', stackTools: ['PostgreSQL', 'Other'], stackWhy: ['cost', 'other'], stackWhyOther: 'hidden why', burden: 'slows', problemCategory: 'other', problem: 'real pain', anticipateIssues: 'yes', workingWell: 'hidden positive', workaround: 'tried', workaroundDetails: 'details', outcome: 'partly', role: 'founder', owner: 'me', spend: '50-249', email: 'person@example.com', phone: '+1 555 000 0000', hate: 'Nothing else' });
   test('non-other context drops context details; non-team context drops team details', () => {
     expect(validateAnswers(populated()).contextDetails).toBe('');
     const result = validateAnswers({ ...populated(), context: 'other', contextDetails: 'kept' });
@@ -196,16 +220,25 @@ describe('server-side branch pruning and final projection', () => {
     expect(result.role).toBe('');
     expect(result.owner).toBe('');
   });
-  test('idea stage drops building-specific answers but retains anticipated problem text', () => {
+  test('side-project notes survive only for side-project and self-hosting contexts', () => {
+    expect(validateAnswers(populated()).sideProject).toBe('');
+    expect(validateAnswers({ ...populated(), context: 'side-project', sideProject: 'kept' }).sideProject).toBe('kept');
+    expect(validateAnswers({ ...populated(), context: 'self-host', sideProject: 'kept' }).sideProject).toBe('kept');
+  });
+  test('the unlisted-tool text survives only while Other is selected', () => {
+    expect(validateAnswers(populated()).stack).toBe('hidden stack text');
+    expect(validateAnswers({ ...populated(), stackTools: ['PostgreSQL'] }).stack).toBe('');
+  });
+  test('idea stage drops building-specific answers but retains anticipated answers', () => {
     const result = validateAnswers({ ...populated(), stage: 'idea' });
-    for (const field of ['stack', 'timeSpent', 'workingWell', 'problemCategory', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
-    expect(result.stackTools).toEqual([]);
-    expect(result.problem).toBe('real pain');
+    for (const field of ['stack', 'stackWhyOther', 'workingWell', 'problemCategory', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
+    expect(result.stackTools).toEqual([]);expect(result.stackWhy).toEqual([]);
+    expect(result.anticipateIssues).toBe('yes');expect(result.problem).toBe('real pain');
   });
   test('no burden keeps working-well and discards all pain follow-ups', () => {
     const result = validateAnswers({ ...populated(), burden: 'none' });
     expect(result.workingWell).toBe('hidden positive');
-    for (const field of ['problem', 'problemCategory', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
+    for (const field of ['problem', 'problemCategory', 'anticipateIssues', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
   });
   test('unanswered burden clears problem details', () => {
     const result = validateAnswers({ ...populated(), burden: '' });
@@ -213,10 +246,11 @@ describe('server-side branch pruning and final projection', () => {
     expect(result.problemCategory).toBe('');
     expect(result.workingWell).toBe('');
   });
-  test('early burden retains anticipated text but clears experienced-pain fields', () => {
-    const result = validateAnswers({ ...populated(), burden: 'early' });
-    expect(result.problem).toBe('real pain');
-    for (const field of ['problemCategory', 'workaround', 'workaroundDetails', 'outcome', 'spend', 'workingWell'] as const) expect(result[field]).toBe('');
+  test('early burden keeps anticipated answers only when issues are expected', () => {
+    expect(validateAnswers({ ...populated(), burden: 'early' }).problem).toBe('real pain');
+    for (const field of ['problemCategory', 'workaround', 'workaroundDetails', 'outcome', 'spend', 'workingWell'] as const) expect(validateAnswers({ ...populated(), burden: 'early' })[field]).toBe('');
+    expect(validateAnswers({ ...populated(), burden: 'early', anticipateIssues: 'no' }).problem).toBe('');
+    expect(validateAnswers({ ...populated(), burden: 'early', anticipateIssues: 'unsure' }).problem).toBe('');
   });
   test('experienced other-category preserves text; cost preserves spend instead', () => {
     expect(validateAnswers(populated()).problem).toBe('real pain');
@@ -228,6 +262,9 @@ describe('server-side branch pruning and final projection', () => {
     expect(setup.problem).toBe('');
     expect(setup.spend).toBe('');
   });
+  test('experienced pain drops the anticipated-issues answer', () => {
+    expect(validateAnswers(populated()).anticipateIssues).toBe('');
+  });
   test('only a tried workaround keeps outcome and explanatory text', () => {
     expect(validateAnswers(populated()).outcome).toBe('partly');
     for (const workaround of ['', 'nothing', 'someone']) {
@@ -236,9 +273,9 @@ describe('server-side branch pruning and final projection', () => {
       expect(result.outcome).toBe('');
     }
   });
-  test('empty or no-follow-up preference removes email', () => {
-    for (const next of ['', 'none']) expect(validateAnswers({ ...populated(), next }).email).toBe('');
+  test('contact details are retained without a follow-up preference gate', () => {
     expect(validateAnswers(populated()).email).toBe('person@example.com');
+    expect(validateAnswers(populated()).phone).toBe('+1 555 000 0000');
   });
   test('validation creates a new canonical state without mutating caller input', () => {
     const source = populated();
@@ -249,9 +286,9 @@ describe('server-side branch pruning and final projection', () => {
     expect(result.stackTools).not.toBe(source.stackTools);
   });
   test('projection contains only applicable research fields and no owner/session metadata', () => {
-    const answers = validateAnswers({ ...populated(), context: 'other', stage: 'idea', burden: 'early', next: 'none', hate: '  Free text  ' });
+    const answers = validateAnswers({ ...populated(), context: 'other', stage: 'idea', burden: 'early', hate: '  Free text  ' });
     const summary = projectedResponse(answers);
-    expect(summary).toMatchObject({ schemaVersion: 4, context: 'other', stage: 'idea', problemEvidence: 'anticipated', problem: 'real pain', nextStep: 'none', anythingYouHate: 'Free text' });
-    for (const key of ['email', 'stack', 'stackTools', 'role', 'infrastructureOwner', 'workaroundStatus', 'workaroundOutcome', 'monthlySpendUsd', 'token', 'token_hash', 'mutationId', 'expectedRevision']) expect(key in summary).toBe(false);
+    expect(summary).toMatchObject({ schemaVersion: 5, context: 'other', stage: 'idea', problemEvidence: 'anticipated', anticipatedIssues: 'yes', anticipatedIssueDetails: 'real pain', email: 'person@example.com', anythingYouHate: 'Free text' });
+    for (const key of ['stack', 'stackTools', 'stackWhy', 'role', 'infrastructureOwner', 'workaroundStatus', 'workaroundOutcome', 'monthlySpendUsd', 'nextStep', 'weeklyInfrastructureTime', 'token', 'token_hash', 'mutationId', 'expectedRevision']) expect(key in summary).toBe(false);
   });
 });

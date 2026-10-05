@@ -5,7 +5,7 @@ import { emptyAnswers } from '../src/lib/research/form';
 import type { SaveRequest } from '../src/lib/research/persistence-contract';
 
 const answer = { ...emptyAnswers(), context: 'side-project' };
-const final = { ...answer, stage: 'idea', burden: 'none', next: 'none' };
+const final = { ...answer, stage: 'idea', burden: 'none', email: 'valid@example.com' };
 const success = (request: SaveRequest) => new Response(JSON.stringify({ revision: request.expectedRevision + 1, completed: request.completed, savedAt: '2026-10-01T00:00:00.000Z', expiresAt: '2026-11-01T00:00:00.000Z' }), { status: 200 });
 function setup(handler?: typeof fetch, securityProvider?: 'azure' | 'aws' | 'turnstile', capabilities: { crypto?: Crypto; secureContext?: () => boolean } = {}) {
   let raw: string | null = null, online = true, now = Date.now(), challenges = 0;
@@ -73,20 +73,22 @@ test('request timeout keeps the same mutation pending instead of claiming succes
 
 test('validation and storage hydration reject corruption while keeping old local drafts and clamping hidden steps', () => {
   const t = setup(); t.online(false); t.controller.update(answer, 'context');
-  const draft = JSON.parse(t.raw()!); draft.createdAt = '2020-01-01T00:00:00Z'; draft.updatedAt = draft.createdAt; draft.step = 'contact';
+  const draft = JSON.parse(t.raw()!); draft.createdAt = '2020-01-01T00:00:00Z'; draft.updatedAt = draft.createdAt; draft.step = 'stack';
   const parsed = parseLocalDraft(JSON.stringify(draft)); expect(parsed.answers.context).toBe('side-project'); expect(parsed.step).toBe('context');
   expect(() => parseLocalDraft(JSON.stringify({ ...draft, answers: { context: 'other' } }))).toThrow();
   expect(() => parseLocalDraft(JSON.stringify({ ...draft, token: 'not-a-secure-token' }))).toThrow();
   expect(() => parseLocalDraft(JSON.stringify({ ...draft, pending: { method: 'POST', request: { ...draft, mutationId: 'bad', expectedRevision: 0 } } }))).toThrow();
-  expect(finalValidation({ ...final, next: 'updates' })).toBe('contact');
-  expect(finalValidation({ ...final, next: 'updates', email: 'valid@example.com' })).toBeNull();
+  expect(finalValidation({ ...final, email: 'invalid' })).toBe('contact');
+  expect(finalValidation({ ...final, email: 'valid@example.com' })).toBeNull();
+  expect(finalValidation({ ...final, email: 'valid@example.com', burden: '' })).toBe('burden');
+  expect(finalValidation({ ...final, email: 'valid@example.com', context: 'startup' })).toBe('role');
   t.controller.clearLocal();
 });
 
 test('invalid final responses stay drafts and unfinished emails still autosave', async () => {
-  const t = setup(); t.controller.update({ ...final, next: 'updates', email: 'partial@' }, 'contact'); await t.controller.flush();
+  const t = setup(); t.controller.update({ ...final, email: 'partial@' }, 'contact'); await t.controller.flush();
   expect(t.calls[0].body.answers.email).toBe('partial@'); expect(t.calls[0].body.completed).toBe(false);
-  t.controller.update({ ...final, next: 'updates', email: 'partial@' }, 'hate', true); await t.controller.flush();
+  t.controller.update({ ...final, email: 'partial@' }, 'hate', true); await t.controller.flush();
   expect(t.calls).toHaveLength(1); expect(t.controller.view.submitted).toBe(false); t.controller.clearLocal();
 });
 

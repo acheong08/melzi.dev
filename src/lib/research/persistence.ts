@@ -1,8 +1,8 @@
-import { choices, emptyAnswers, stepsFor, type Answers, type Step } from './form.js';
+import { choices, emptyAnswers, experiencedPain, isBuilding, isTeam, showsProblem, showsSpend, stepsFor, type Answers, type Step } from './form.js';
 import { ANSWER_SCHEMA_VERSION, type DraftSnapshot, type SaveRequest, type SaveResult, type RemoteDraft } from './persistence-contract.js';
 import { researchProviderConfig, type ResearchSecurityProvider } from './provider-config.js';
 
-export const STORAGE_KEY = 'melzi.research.draft.v1';
+export const STORAGE_KEY = 'melzi.research.draft.v2';
 export type PendingMutation = { method: 'POST' | 'PUT'; request: SaveRequest };
 export type LocalDraft = DraftSnapshot & {
   version: 1; token: string; revision: number | null; pending: PendingMutation | null;
@@ -26,15 +26,27 @@ export function validAnswers(value: unknown): value is Answers {
   if (!value || typeof value !== 'object') return false;
   const a = value as Answers;
   for (const key of Object.keys(emptyAnswers()) as (keyof Answers)[]) {
-    if (key === 'stackTools') {
-      if (!Array.isArray(a[key]) || a[key].length > 100 || a[key].some(v => typeof v !== 'string' || v.length > 80)) return false;
-    } else if (typeof a[key] !== 'string' || a[key].length > (key === 'email' ? 254 : 2000)) return false;
+    if (key === 'stackTools' || key === 'stackWhy') {
+      if (!Array.isArray(a[key]) || a[key].length > (key === 'stackTools' ? 100 : 16) || a[key].some(v => typeof v !== 'string' || v.length > 80)) return false;
+    } else if (typeof a[key] !== 'string' || a[key].length > (key === 'email' ? 254 : key === 'phone' ? 40 : 2000)) return false;
   }
   return Object.entries(choices).every(([key, opts]) => !a[key as keyof typeof choices] || opts.some(o => o.value === a[key as keyof typeof choices]));
 }
 export function finalValidation(answers: Answers): Step | null {
-  for (const key of ['context', 'stage', 'burden', 'next'] as const) if (!answers[key]) return key;
-  if (answers.next !== 'none' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email.trim())) return 'contact';
+  for (const key of ['context', 'stage', 'burden'] as const) if (!answers[key]) return key;
+  if (isTeam(answers) && !answers.role) return 'role';
+  if (isBuilding(answers) && (!answers.stackTools.length || !answers.stackWhy.length)) return 'stack';
+  if (showsProblem(answers)) {
+    if (experiencedPain(answers)) { if (!answers.problemCategory) return 'problem'; }
+    else if (!answers.anticipateIssues) return 'problem';
+  }
+  if (experiencedPain(answers)) {
+    if (!answers.workaround) return 'workaround';
+    if (answers.workaround === 'tried' && !answers.outcome) return 'outcome';
+  }
+  if (showsSpend(answers) && !answers.spend) return 'spend';
+  if (isTeam(answers) && !answers.owner) return 'startup';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email.trim())) return 'contact';
   return null;
 }
 function validSnapshot(v: DraftSnapshot): boolean {
@@ -116,12 +128,12 @@ export class DraftPersistence {
   }
   private newDraft(answers: Answers, step: Step): LocalDraft {
     const now = new Date(this.now()).toISOString();
-    return { version: 1, schemaVersion: 4, token: this.token(), answers: clone(answers), step, completed: false, revision: null, pending: null, acknowledged: null, createdAt: now, updatedAt: now, savedAt: null, expiresAt: null };
+    return { version: 1, schemaVersion: ANSWER_SCHEMA_VERSION, token: this.token(), answers: clone(answers), step, completed: false, revision: null, pending: null, acknowledged: null, createdAt: now, updatedAt: now, savedAt: null, expiresAt: null };
   }
   update(answers: Answers, step: Step, completed = false) {
     if (!this.ready) return;
     if (completed && finalValidation(answers)) return;
-    const snapshot: DraftSnapshot = { schemaVersion: 4, answers: clone(answers), step: stepsFor(answers).includes(step) ? step : 'context', completed };
+    const snapshot: DraftSnapshot = { schemaVersion: ANSWER_SCHEMA_VERSION, answers: clone(answers), step: stepsFor(answers).includes(step) ? step : 'context', completed };
     if (this.draft && fingerprint(this.draft) === fingerprint(snapshot)) return;
     if (!this.draft && JSON.stringify(answers) === JSON.stringify(emptyAnswers())) return;
     this.draft = this.draft ? { ...this.draft, ...snapshot, updatedAt: new Date(this.now()).toISOString() } : { ...this.newDraft(answers, step), ...snapshot };
@@ -163,7 +175,7 @@ export class DraftPersistence {
         let mutationId: string;
         try { mutationId = (this.options.crypto ?? globalThis.crypto).randomUUID(); }
         catch { this.transportUnavailable(); return; }
-        this.draft.pending = { method: this.draft.revision === null ? 'POST' : 'PUT', request: { schemaVersion: 4, answers: clone(this.draft.answers), step: this.draft.step, completed: this.draft.revision === null ? false : this.draft.completed, expectedRevision: this.draft.revision ?? 0, mutationId } };
+        this.draft.pending = { method: this.draft.revision === null ? 'POST' : 'PUT', request: { schemaVersion: ANSWER_SCHEMA_VERSION, answers: clone(this.draft.answers), step: this.draft.step, completed: this.draft.revision === null ? false : this.draft.completed, expectedRevision: this.draft.revision ?? 0, mutationId } };
       }
       if (!this.persist()) return;
       const pending = clone(this.draft.pending), token = this.draft.token;

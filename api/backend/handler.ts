@@ -48,7 +48,7 @@ export function createHandler(dependencies:HandlerDependencies={}) {
         throw new ApiFailure(404,'session_not_found','This draft was not found.');
       }
       const row=found.rows[0];if(new Date(row.expires_at).getTime()<=Date.now())throw new ApiFailure(410,'session_expired','This draft has expired.');
-      return json(200,{schemaVersion:4,answers:row.answers,step:row.step,completed:row.completed,revision:row.revision,savedAt:row.updated_at.toISOString(),expiresAt:row.expires_at.toISOString()});
+      return json(200,{schemaVersion:5,answers:row.answers,step:row.step,completed:row.completed,revision:row.revision,savedAt:row.updated_at.toISOString(),expiresAt:row.expires_at.toISOString()});
     }
     if(!/^application\/json(?:\s*;|$)/i.test(headers['content-type']||''))throw new ApiFailure(400,'invalid_content_type','Send JSON content.');
     const bytes=event.readBody?Buffer.from(await event.readBody()):event.isBase64Encoded?Buffer.from(event.body||'','base64'):Buffer.from(event.body||'','utf8');
