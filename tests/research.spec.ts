@@ -27,7 +27,7 @@ async function fillContact(page:Page,email='person@example.com',phone=''){
   await expect(page.getByRole('heading',{name:emailStep,exact:true})).toBeVisible();
   const emailInput=page.getByRole('textbox',{name:'Email address',exact:true});
   await expect(emailInput).toHaveAttribute('required','');
-  const phoneInput=page.getByRole('textbox',{name:'Phone number (optional)',exact:true});
+  const phoneInput=page.getByRole('textbox',{name:/Phone number \(optional/});
   await expect(phoneInput).toBeVisible();await expect(page.getByRole('button',{name:'Skip',exact:true})).toHaveCount(0);
   await emailInput.fill(email);
   if(phone)await phoneInput.fill(phone);
@@ -222,15 +222,15 @@ test('drafts, focus restoration, and keyboard containment still work',async({pag
 
 test('the header promises two minutes, then counts down the last questions',async({page})=>{
   await openForm(page);
-  await expect(page.locator('.save-note')).toHaveText('Should only take 2 minutes to complete');
+  await expect(page.locator('.save-note')).toHaveText('This should only take 2 mins :)');
   await choose(page,'A startup');await choose(page,'Founder');await choose(page,'Building, but not deployed yet');
-  await expect(page.locator('.save-note')).toHaveText('Should only take 2 minutes to complete');
+  await expect(page.locator('.save-note')).toHaveText('This should only take 2 mins :)');
   await page.getByRole('checkbox',{name:'AWS',exact:true}).check();
   await page.getByRole('checkbox',{name:'Ease of use',exact:true}).check();await next(page);
   await choose(page,'Not a problem');
-  await expect(page.locator('.save-note')).toHaveText(/Only \d+ questions left :\)/);
+  await expect(page.locator('.save-note')).toHaveText('Just a few questions left :)');
   await text(page,'What makes it work well for you?','It is quiet.');
-  await expect(page.locator('.save-note')).toHaveText(/Only \d+ questions left :\)/);
+  await expect(page.locator('.save-note')).toHaveText('Just a few questions left :)');
   await choose(page,'Me');
   await fillContact(page);await next(page);
   await expect(page.locator('.save-note')).toHaveText('Only 1 question left :)');

@@ -32,7 +32,7 @@ test('visiting creates no credential or server record; first partial answer save
   await page.getByRole('radio', { name: 'Something else', exact: true }).check();
   await page.getByRole('textbox', { name: 'What are you working on? (optional)' }).fill('  unfinished details  ');
   expect((await local(page)).answers.contextDetails).toBe('  unfinished details  ');
-  await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
+  await expect(status(page)).toHaveText('This should only take 2 mins :)');
   await expect.poll(() => api.requests.some(r => r.method === 'POST')).toBe(true);
   const creation = api.requests.find(r => r.method === 'POST')!;
   expect(creation.token).toMatch(/^[A-Za-z0-9_-]{43}$/); expect(creation.challenge).toBeUndefined();
@@ -72,7 +72,7 @@ test('lost acknowledgement retries the identical mutation before sending newer a
   await expect(status(page)).toHaveText('Saved on this device, retrying');
   await page.getByRole('textbox', { name: 'What are you working on? (optional)' }).fill('Newer local edit');
   await expect.poll(() => api.requests.filter(r => r.body).length).toBeGreaterThanOrEqual(3);
-  await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
+  await expect(status(page)).toHaveText('This should only take 2 mins :)');
   const writes = api.requests.filter(r => r.body);
   expect(writes.length).toBeGreaterThanOrEqual(3);
   expect(writes[1].body).toEqual(writes[0].body);
@@ -87,7 +87,7 @@ test('reload replays a persisted unacknowledged mutation, not a new creation', a
   await expect(status(page)).toHaveText('Saved on this device, retrying');
   const original = api.requests.find(r => r.body)!.body;
   await page.reload(); await expect(page.locator('.story-track')).toHaveAttribute('data-scroll-ready', 'true'); await page.getByRole('button', { name: 'Help shape Melzi', exact: true }).click();
-  await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
+  await expect(status(page)).toHaveText('This should only take 2 mins :)');
   expect(api.requests.filter(r => r.body)[1].body).toEqual(original); expect(api.records.size).toBe(1);
 });
 
@@ -103,26 +103,26 @@ test('final success waits for acknowledgement before showing the thank-you page'
 });
 
 for (const code of [404, 410]) test(`${code} preserves local answers and requires an explicit new session`, async ({ page }) => {
-  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Only 4 questions left :)');
+  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Just a few questions left :)');
   const token = (await local(page)).token; api.status = code;
   await page.getByRole('radio', { name: 'Exploring an idea', exact: true }).check();
   await expect(status(page)).toHaveText('Saved session unavailable');
   expect((await local(page)).answers.context).toBe('side-project'); expect((await local(page)).token).toBe(token);
-  api.status = 0; await page.getByRole('button', { name: 'Start a fresh session with these answers' }).click(); await expect(status(page)).toHaveText('Only 4 questions left :)');
+  api.status = 0; await page.getByRole('button', { name: 'Start a fresh session with these answers' }).click(); await expect(status(page)).toHaveText('Just a few questions left :)');
   expect((await local(page)).token).not.toBe(token); expect((await local(page)).answers.stage).toBe('idea');
 });
 
 test('revision conflicts pause writes and explicit reload adopts server answers', async ({ page }) => {
-  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Only 4 questions left :)');
+  const api = await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Just a few questions left :)');
   const record = [...api.records.values()][0]; record.revision++; record.answers.context = 'startup';
   await page.getByRole('radio', { name: 'Exploring an idea', exact: true }).check();
   await expect(status(page)).toHaveText('Save paused: draft conflict'); expect((await local(page)).answers.context).toBe('side-project');
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Reload saved draft' }).click();
-  await expect(status(page)).toHaveText('Should only take 2 minutes to complete'); expect((await local(page)).answers.context).toBe('startup');
+  await expect(status(page)).toHaveText('This should only take 2 mins :)'); expect((await local(page)).answers.context).toBe('startup');
 });
 
 test('storage events pause writes rather than silently overwriting another tab', async ({ page }) => {
-  await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Only 4 questions left :)');
+  await mockResearchApi(page); await open(page); await choose(page, 'A side project'); await skip(page); await expect(status(page)).toHaveText('Just a few questions left :)');
   await page.evaluate(key => { const value = JSON.parse(localStorage.getItem(key)!); value.answers.context = 'startup'; const raw = JSON.stringify(value); localStorage.setItem(key, raw); window.dispatchEvent(new StorageEvent('storage', { key, newValue: raw })); }, STORAGE_KEY);
   await expect(status(page)).toHaveText('Save paused: draft conflict');
   await page.getByRole('radio', { name: 'Exploring an idea', exact: true }).check();
@@ -147,7 +147,7 @@ test('closing the modal does not stop saving; clear local never deletes the remo
   await page.getByRole('button', { name: 'Help shape Melzi', exact: true }).click();
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Clear local draft' }).click();
   expect(await local(page)).toBeNull(); expect(api.records.size).toBe(1);
-  await page.getByRole('radio', { name: 'Something else', exact: true }).check(); await expect(status(page)).toHaveText('Should only take 2 minutes to complete');
+  await page.getByRole('radio', { name: 'Something else', exact: true }).check(); await expect(status(page)).toHaveText('This should only take 2 mins :)');
   await expect.poll(() => api.records.size).toBe(2);
 });
 
