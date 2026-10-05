@@ -1,96 +1,257 @@
 <script lang="ts">
-  import { tick, onMount, untrack } from 'svelte';
-  import { getDraftPersistence, finalValidation, saveStatus, type DraftPersistence, type PersistenceView } from '#lib/research/persistence.js';
-  import { ManagedTurnstile } from '#lib/research/turnstile.js';
-  import { securityProviderFor } from '#lib/research/provider-config.js';
-  import ChoiceField from './ChoiceField.svelte';
-  import StackPicker from './StackPicker.svelte';
-  import { choices, emptyAnswers, stepsFor, questionFor, textQuestionFor, isOptional, changeAnswer, skipAnswer, type SingleField, type Step } from '#lib/research/form.js';
-  let { onclose }: { onclose:()=>void } = $props();
-  let answers=$state(emptyAnswers());
-  let step=$state<Step>('context');
-  let complete=$state(false);
-  let hydrated=$state(false);
-  let persistence:DraftPersistence;
-  const usesTurnstile=securityProviderFor(import.meta.env.VITE_RESEARCH_SECURITY_PROVIDER)==='turnstile';
-  let verification:ManagedTurnstile|undefined;
-  let verificationContainer=$state<HTMLDivElement>();
-  let verificationActive=$state(false);
-  let save=$state<PersistenceView>({draft:null,state:'idle',warning:'',submitted:false,submitting:false});
-  let submissionRequested=$state(false);
-  onMount(()=>{
-    if(usesTurnstile)verification=new ManagedTurnstile(()=>verificationContainer,active=>verificationActive=active);
-    persistence=getDraftPersistence(()=>verification?verification.token():Promise.reject(new Error('Verification is not configured')));
-    const unsubscribe=persistence.subscribe(view=>{
-      const newlySubmitted=view.submitted&&!complete;
-      save=view;
-      complete=view.submitted;
-      submissionRequested=view.submitting;
-      if(newlySubmitted)void focusCurrent();
-    });
-    const draft=persistence.view.draft;
-    if(draft){answers=draft.answers;step=draft.step;}
-    hydrated=true;
-    const dialog=body.closest('dialog');
-    const flush=()=>{void persistence.flush(true);};
-    dialog?.addEventListener('close',flush);
-    return ()=>{unsubscribe();dialog?.removeEventListener('close',flush);};
-  });
-  $effect(()=>{
-    const current=JSON.stringify(answers),currentStep=step,ready=hydrated;
-    if(ready)untrack(()=>persistence.update(JSON.parse(current),currentStep,submissionRequested));
-  });
-  let error=$state('');
-  let body:HTMLDivElement;
-  let heading:HTMLHeadingElement;
-  let emailInput=$state<HTMLInputElement>();
-  const steps=$derived(stepsFor(answers));
-  const index=$derived(steps.indexOf(step));
-  const left=$derived(steps.length-index);
-  const question=$derived(questionFor(step,answers));
-  const textQuestion=$derived(textQuestionFor(step,answers));
-  const optional=$derived(isOptional(step));
-  const note=$derived.by(()=>{
-    if(complete) return 'Response saved.';
-    if(['offline','retrying','conflict','expired','invalid','storage','verification'].includes(save.state)) return saveStatus(save);
-    return left<5?(left===1?'Only 1 question left :)':`Only ${left} questions left :)`):'Should only take 2 minutes to complete';
-  });
-  const title=$derived(complete?'Thanks for helping shape Melzi.':question?.title??textQuestion?.title??(step==='stack'?'What are you building with today?':step==='startup'?'A little about your team':'Where can we reach you?'));
+import { tick, onMount, untrack } from "svelte";
+import {
+	getDraftPersistence,
+	finalValidation,
+	saveStatus,
+	type DraftPersistence,
+	type PersistenceView,
+} from "#lib/research/persistence.js";
+import { ManagedTurnstile } from "#lib/research/turnstile.js";
+import { securityProviderFor } from "#lib/research/provider-config.js";
+import ChoiceField from "./ChoiceField.svelte";
+import StackPicker from "./StackPicker.svelte";
+import {
+	choices,
+	emptyAnswers,
+	stepsFor,
+	questionFor,
+	textQuestionFor,
+	isOptional,
+	changeAnswer,
+	skipAnswer,
+	type SingleField,
+	type Step,
+} from "#lib/research/form.js";
+let { onclose }: { onclose: () => void } = $props();
+let answers = $state(emptyAnswers());
+let step = $state<Step>("context");
+let complete = $state(false);
+let hydrated = $state(false);
+let persistence: DraftPersistence;
+const usesTurnstile =
+	securityProviderFor(import.meta.env.VITE_RESEARCH_SECURITY_PROVIDER) ===
+	"turnstile";
+let verification: ManagedTurnstile | undefined;
+let verificationContainer = $state<HTMLDivElement>();
+let verificationActive = $state(false);
+let save = $state<PersistenceView>({
+	draft: null,
+	state: "idle",
+	warning: "",
+	submitted: false,
+	submitting: false,
+});
+let submissionRequested = $state(false);
+onMount(() => {
+	if (usesTurnstile)
+		verification = new ManagedTurnstile(
+			() => verificationContainer,
+			(active) => (verificationActive = active),
+		);
+	persistence = getDraftPersistence(() =>
+		verification
+			? verification.token()
+			: Promise.reject(
+					new Error(
+						"Verification is not configured",
+					),
+				),
+	);
+	const unsubscribe = persistence.subscribe((view) => {
+		const newlySubmitted = view.submitted && !complete;
+		save = view;
+		complete = view.submitted;
+		submissionRequested = view.submitting;
+		if (newlySubmitted) void focusCurrent();
+	});
+	const draft = persistence.view.draft;
+	if (draft) {
+		answers = draft.answers;
+		step = draft.step;
+	}
+	hydrated = true;
+	const dialog = body.closest("dialog");
+	const flush = () => {
+		void persistence.flush(true);
+	};
+	dialog?.addEventListener("close", flush);
+	return () => {
+		unsubscribe();
+		dialog?.removeEventListener("close", flush);
+	};
+});
+$effect(() => {
+	const current = JSON.stringify(answers),
+		currentStep = step,
+		ready = hydrated;
+	if (ready)
+		untrack(() =>
+			persistence.update(
+				JSON.parse(current),
+				currentStep,
+				submissionRequested,
+			),
+		);
+});
+let error = $state("");
+let body: HTMLDivElement;
+let heading: HTMLHeadingElement;
+let emailInput = $state<HTMLInputElement>();
+const steps = $derived(stepsFor(answers));
+const index = $derived(steps.indexOf(step));
+const left = $derived(steps.length - index);
+const question = $derived(questionFor(step, answers));
+const textQuestion = $derived(textQuestionFor(step, answers));
+const optional = $derived(isOptional(step));
+const note = $derived.by(() => {
+	if (complete) return "Response saved.";
+	if (
+		[
+			"offline",
+			"retrying",
+			"conflict",
+			"expired",
+			"invalid",
+			"storage",
+			"verification",
+		].includes(save.state)
+	)
+		return saveStatus(save);
+	return left < 5
+		? left === 1
+			? "Only 1 question left :)"
+			: `Just a few questions left :)`
+		: "This should only take 2 mins :)";
+});
+const title = $derived(
+	complete
+		? "Thanks for helping shape Melzi."
+		: (question?.title ??
+				textQuestion?.title ??
+				(step === "stack"
+					? "What are you building with today?"
+					: step === "startup"
+						? "A little about your team"
+						: "Where can we reach you?")),
+);
 
-  export async function focusCurrent(){await tick();if(body)body.scrollTop=0;heading?.focus({preventScroll:true});}
-  function choose(field:SingleField,value:string){answers=changeAnswer(answers,field,value);error='';}
-  function advance(){
-    const current=stepsFor(answers);const next=current[current.indexOf(step)+1];
-    error='';
-    if(next){step=next;persistence.update(answers,step,false);void persistence.flush();}
-    else {
-      const invalid=finalValidation(answers);
-      if(invalid){step=invalid;error=invalid==='contact'?'Enter a valid email address.':'Choose an option to continue.';}
-      else {submissionRequested=true;persistence.update(answers,step,true);void persistence.flush();}
-    }
-    void focusCurrent();
-  }
-  function submit(event:SubmitEvent){
-    event.preventDefault();
-    if(question&&!optional&&!answers[question.field]){error='Choose an option to continue.';return;}
-    if(step==='stack'&&(!answers.stackTools.length||!answers.stackWhy.length)){error=answers.stackTools.length?'Choose at least one reason to continue.':'Select at least one tool to continue.';return;}
-    if(step==='startup'&&!answers.owner){error='Choose an option to continue.';return;}
-    if(step==='contact'&&(!answers.email.trim()||!emailInput?.validity.valid)){error=answers.email.trim()?'Enter a valid email address.':'Enter your email address.';emailInput?.focus();return;}
-    advance();
-  }
-  function skip(){answers=skipAnswer(answers,step);advance();}
-  function back(){error='';submissionRequested=false;if(index>0)step=steps[index-1];persistence.update(answers,step,false);void persistence.flush();void focusCurrent();}
-  function restart(){
-    if(!window.confirm('Clear the draft on this device? This does not delete any responses already saved to the server.'))return;
-    verification?.reset();persistence.clearLocal();answers=emptyAnswers();step='context';complete=false;submissionRequested=false;error='';void focusCurrent();
-  }
-  async function reloadSaved(){
-    if(!window.confirm('Replace the answers shown here with the saved draft?'))return;
-    await persistence.reloadSaved();const draft=persistence.view.draft;
-    answers=draft?.answers??emptyAnswers();step=draft?.step??'context';error='';void focusCurrent();
-  }
-  function freshSession(){verification?.reset();persistence.freshSession();submissionRequested=false;complete=false;}
-  function close(){void persistence.flush(true);onclose();}
+export async function focusCurrent() {
+	await tick();
+	if (body) body.scrollTop = 0;
+	heading?.focus({ preventScroll: true });
+}
+function choose(field: SingleField, value: string) {
+	answers = changeAnswer(answers, field, value);
+	error = "";
+}
+function advance() {
+	const current = stepsFor(answers);
+	const next = current[current.indexOf(step) + 1];
+	error = "";
+	if (next) {
+		step = next;
+		persistence.update(answers, step, false);
+		void persistence.flush();
+	} else {
+		const invalid = finalValidation(answers);
+		if (invalid) {
+			step = invalid;
+			error =
+				invalid === "contact"
+					? "Enter a valid email address."
+					: "Choose an option to continue.";
+		} else {
+			submissionRequested = true;
+			persistence.update(answers, step, true);
+			void persistence.flush();
+		}
+	}
+	void focusCurrent();
+}
+function submit(event: SubmitEvent) {
+	event.preventDefault();
+	if (question && !optional && !answers[question.field]) {
+		error = "Choose an option to continue.";
+		return;
+	}
+	if (
+		step === "stack" &&
+		(!answers.stackTools.length || !answers.stackWhy.length)
+	) {
+		error = answers.stackTools.length
+			? "Choose at least one reason to continue."
+			: "Select at least one tool to continue.";
+		return;
+	}
+	if (step === "startup" && !answers.owner) {
+		error = "Choose an option to continue.";
+		return;
+	}
+	if (
+		step === "contact" &&
+		(!answers.email.trim() || !emailInput?.validity.valid)
+	) {
+		error = answers.email.trim()
+			? "Enter a valid email address."
+			: "Enter your email address.";
+		emailInput?.focus();
+		return;
+	}
+	advance();
+}
+function skip() {
+	answers = skipAnswer(answers, step);
+	advance();
+}
+function back() {
+	error = "";
+	submissionRequested = false;
+	if (index > 0) step = steps[index - 1];
+	persistence.update(answers, step, false);
+	void persistence.flush();
+	void focusCurrent();
+}
+function restart() {
+	if (
+		!window.confirm(
+			"Clear the draft on this device? This does not delete any responses already saved to the server.",
+		)
+	)
+		return;
+	verification?.reset();
+	persistence.clearLocal();
+	answers = emptyAnswers();
+	step = "context";
+	complete = false;
+	submissionRequested = false;
+	error = "";
+	void focusCurrent();
+}
+async function reloadSaved() {
+	if (
+		!window.confirm(
+			"Replace the answers shown here with the saved draft?",
+		)
+	)
+		return;
+	await persistence.reloadSaved();
+	const draft = persistence.view.draft;
+	answers = draft?.answers ?? emptyAnswers();
+	step = draft?.step ?? "context";
+	error = "";
+	void focusCurrent();
+}
+function freshSession() {
+	verification?.reset();
+	persistence.freshSession();
+	submissionRequested = false;
+	complete = false;
+}
+function close() {
+	void persistence.flush(true);
+	onclose();
+}
 </script>
 
 <form class="research-form" onsubmit={submit} novalidate>
@@ -131,9 +292,8 @@
       <label class="input-label" for="research-email">Email address</label>
       <input bind:this={emailInput} id="research-email" name="email" type="email" required autocomplete="email" maxlength="254" bind:value={answers.email} aria-invalid={error?true:undefined} aria-describedby={error?'form-error':undefined} oninput={()=>error=''} placeholder="you@example.com" />
       <div class="phone-field">
-        <label class="input-label" for="research-phone">Phone number <span>(optional)</span></label>
+        <label class="input-label" for="research-phone">Phone number <span>(optional - we'd love to keep you in the loop!)</span></label>
         <input id="research-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" bind:value={answers.phone} placeholder="+1 555 000 0000" />
-        <p class="phone-help">Only if you’re open to a short call. We won’t call without asking first.</p>
       </div>
     {/if}
     {#if error}<p id="form-error" class="error" role="alert">{error}</p>{/if}
