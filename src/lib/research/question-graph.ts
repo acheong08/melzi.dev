@@ -1,4 +1,4 @@
-import { choices, emptyAnswers, experiencedPain, isOptional, questionFor, stepsFor, textQuestionFor, type Answers, type Step } from './form.js';
+import { choices, emptyAnswers, experiencedPain, isOptional, problemCategoryOptions, questionFor, stepsFor, textQuestionFor, type Answers, type Step } from './form.js';
 
 export type NodeId = Exclude<Step, 'problem'> | 'problem-experienced' | 'problem-anticipated';
 export type GraphNode = {id:NodeId; step:Step; x:number; y:number; rule:string; detail?:string};
@@ -35,8 +35,8 @@ export type GraphEdge={id:string;from:NodeId;to:NodeId};
 // a second routing table. Blank optional workaround answers represent Skip.
 export function allGraphEdges():GraphEdge[]{
   const found=new Map<string,GraphEdge>();
-  for(const context of choices.context)for(const stage of choices.stage)for(const burden of choices.burden)for(const workaround of ['',...choices.workaround.map(o=>o.value)])for(const problemCategory of ['',...choices.problemCategory.map(o=>o.value)]){
-    const path=graphPath({...emptyAnswers(),context:context.value,stage:stage.value,burden:burden.value,workaround,problemCategory});
+  for(const context of choices.context)for(const stage of choices.stage)for(const burden of choices.burden)for(const workaround of ['',...choices.workaround.map(o=>o.value)])for(const problemCategory of ['',...problemCategoryOptions.map(o=>o.value)]){
+    const path=graphPath({...emptyAnswers(),context:context.value,stage:stage.value,burden:burden.value,workaround,problemCategory:problemCategory?[problemCategory]:[]});
     for(let i=1;i<path.length;i++){const from=path[i-1],to=path[i],id=`${from}:${to}`;found.set(id,{id,from,to});}
   }
   return [...found.values()];
@@ -51,7 +51,7 @@ export function edgePath(edge:GraphEdge,index:number):string{
   return `M ${x1} ${y1} V ${y1+20} H ${lane} V ${y2-24} H ${x2} V ${y2}`;
 }
 export const presets=[
-  {id:'startup',label:'Startup with friction',answers:{...emptyAnswers(),context:'startup',stage:'building',burden:'slows',role:'founder',workaround:'tried',problemCategory:'cost'}},
+  {id:'startup',label:'Startup with friction',answers:{...emptyAnswers(),context:'startup',stage:'building',burden:'slows',role:'founder',workaround:'tried',problemCategory:['cost']}},
   {id:'idea',label:'Early idea',answers:{...emptyAnswers(),context:'side-project',stage:'idea',burden:'early',workaround:''}},
   {id:'stable',label:'Stable, no problem',answers:{...emptyAnswers(),context:'self-host',stage:'stable',burden:'none',workaround:''}}
 ] satisfies {id:string;label:string;answers:Answers}[];

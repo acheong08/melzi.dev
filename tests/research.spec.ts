@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mockResearchApi } from './research-api-mock';
 type Api=ReturnType<typeof mockResearchApi>;
-import { choices, emptyAnswers, responseFor, stepsFor, changeAnswer, skipAnswer, isBuilding, experiencedPain, questionFor, textQuestionFor, stackWhyOptions, type Answers } from '../src/lib/research/form';
+import { choices, emptyAnswers, responseFor, stepsFor, changeAnswer, changeMultiAnswer, skipAnswer, isBuilding, experiencedPain, problemCategoryOptions, questionFor, textQuestionFor, stackWhyOptions, type Answers } from '../src/lib/research/form';
 
 import { addStackTool, matchingTools, stackShortlist } from '../src/lib/research/stack-tools';
 
@@ -16,6 +16,7 @@ async function next(page:Page){await page.getByRole('button',{name:'Continue',ex
 async function skip(page:Page){await page.getByRole('button',{name:'Skip',exact:true}).click();}
 async function choose(page:Page,label:string){await page.getByRole('radio',{name:label,exact:true}).check();await next(page);}
 async function text(page:Page,label:string,value:string){await page.getByRole('textbox',{name:label,exact:true}).fill(value);await next(page);}
+async function pick(page:Page,label:string){await page.getByRole('checkbox',{name:label,exact:true}).check();await next(page);}
 async function sideProjectRoute(page:Page,stage='Exploring an idea'){
   await choose(page,'A side project');await skip(page);await choose(page,stage);
 }
@@ -52,7 +53,7 @@ test('idea route asks the required anticipated-issues question instead of free t
   await expect(page.getByRole('heading',{name:hate,exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Submit feedback',exact:true})).toBeVisible();await page.getByRole('button',{name:'Submit feedback',exact:true}).click();
   const data=await submitted(api);
-  expect(data).toMatchObject({schemaVersion:5,problemEvidence:'anticipated',anticipatedIssues:'yes',anticipatedIssueDetails:'I don’t know how to choose a database.'});
+  expect(data).toMatchObject({schemaVersion:6,problemEvidence:'anticipated',anticipatedIssues:'yes',anticipatedIssueDetails:'I don’t know how to choose a database.'});
   for(const key of ['stack','workaroundStatus','workaroundDetails','weeklyInfrastructureTime','nextStep','anythingYouHate'])expect(data).not.toHaveProperty(key);
 });
 
@@ -65,7 +66,7 @@ test('predeployment builders describe stack, why, pain, fixes, and cost without 
   await page.getByRole('checkbox',{name:'Supabase',exact:true}).check();
   await expect(page.locator('.stack-why')).toBeVisible();
   await page.getByRole('checkbox',{name:'Prior experience',exact:true}).check();
-  await next(page);await choose(page,'Slows down or blocks development');await choose(page,'Costs');
+  await next(page);await choose(page,'Slows down or blocks development');await pick(page,'Costs');
   await page.getByRole('radio',{name:'I’ve tried something',exact:true}).check();
   await text(page,'What have you tried? (optional)','Wrote a setup script and hired a consultant.');
   await choose(page,'Helped, but there’s still a problem');await choose(page,'$50 to $249');
@@ -75,7 +76,7 @@ test('predeployment builders describe stack, why, pain, fixes, and cost without 
   await page.getByRole('textbox',{name:hate}).fill('Printers. Especially their setup software.');
   await page.getByRole('button',{name:'Submit feedback'}).click();
   const data=await submitted(api);
-  expect(data).toMatchObject({schemaVersion:5,stage:'building',infrastructureBurden:'slows',role:'founder',stackTools:['AWS','Supabase'],stackWhy:['experience'],problemEvidence:'experienced',problemCategory:'cost',workaroundStatus:'tried',workaroundDetails:'Wrote a setup script and hired a consultant.',workaroundOutcome:'partly',costIsPartOfProblem:true,monthlySpendUsd:'50-249',infrastructureOwner:'me',email:'founder@example.com',phone:'+1 555 000 0000',anythingYouHate:'Printers. Especially their setup software.'});
+  expect(data).toMatchObject({schemaVersion:6,stage:'building',infrastructureBurden:'slows',role:'founder',stackTools:['AWS','Supabase'],stackWhy:['experience'],problemEvidence:'experienced',problemCategory:['cost'],workaroundStatus:'tried',workaroundDetails:'Wrote a setup script and hired a consultant.',workaroundOutcome:'partly',costIsPartOfProblem:true,monthlySpendUsd:'50-249',infrastructureOwner:'me',email:'founder@example.com',phone:'+1 555 000 0000',anythingYouHate:'Printers. Especially their setup software.'});
   for(const key of ['weeklyInfrastructureTime','nextStep','stack','stackOtherDetails'])expect(data).not.toHaveProperty(key);
 });
 
@@ -101,7 +102,7 @@ for(const status of ['Haven’t tried anything yet','Someone else handles it']){
     await openForm(page);await sideProjectRoute(page,'Building, but not deployed yet');
     await page.getByRole('checkbox',{name:'AWS',exact:true}).check();
     await page.getByRole('checkbox',{name:'Ease of use',exact:true}).check();await next(page);
-    await choose(page,'Takes more time than it should');await choose(page,'Setup and configuration');
+    await choose(page,'Takes more time than it should');await pick(page,'Setup and configuration');
     await choose(page,status);await expect(page.getByRole('heading',{name:emailStep,exact:true})).toBeVisible();
   });
 }
@@ -112,7 +113,7 @@ test('backtracking to no problem clears obsolete pain and workaround answers',as
   await page.getByRole('checkbox',{name:'AWS',exact:true}).check();
   await page.getByRole('checkbox',{name:'Cost',exact:true}).check();await next(page);
   await choose(page,'Slows down or blocks development');
-  await page.getByRole('radio',{name:'Something else',exact:true}).check();await text(page,'What’s frustrating you? (optional)','Old complaint');
+  await page.getByRole('checkbox',{name:'Something else',exact:true}).check();await text(page,'What’s frustrating you? (optional)','Old complaint');
   await page.getByRole('radio',{name:'I’ve tried something'}).check();await text(page,'What have you tried? (optional)','Old workaround');await choose(page,'Didn’t help');
   for(let i=0;i<4;i++)await page.getByRole('button',{name:'Back',exact:true}).click();
   await expect(page.getByRole('heading',{name:'How much of a problem is infrastructure work for you right now?'})).toBeVisible();
@@ -165,7 +166,7 @@ for(const details of ['', '  A community research project  ']){
     await expect(input).toHaveCount(0);await page.getByRole('radio',{name:'Something else',exact:true}).check();await expect(input).toHaveValue('');
     await input.fill(details);await next(page);await choose(page,'Exploring an idea');await choose(page,'Not a problem');
     await finish(page);
-    const data=await submitted(api);expect(data).toMatchObject({schemaVersion:5,context:'other'});
+    const data=await submitted(api);expect(data).toMatchObject({schemaVersion:6,context:'other'});
     if(details)expect(data.contextDetails).toBe(details.trim());
     else expect(data).not.toHaveProperty('contextDetails');
     for(const key of ['role','infrastructureOwner'])expect(data).not.toHaveProperty(key);
@@ -181,14 +182,15 @@ for(const details of ['', '  Keeping preview environments aligned  ']){
     await choose(page,'Takes more time than it should');
     await expect(page.getByRole('heading',{name:'What’s the most frustrating part of infrastructure work?',exact:true})).toBeVisible();
     await expect(page.locator('.step-label')).not.toContainText('Optional');
-    await page.getByRole('radio',{name:'Something else',exact:true}).check();
+    await page.getByRole('checkbox',{name:'Something else',exact:true}).check();
     const input=page.getByRole('textbox',{name:'What’s frustrating you? (optional)',exact:true});
-    await input.fill('Obsolete frustration');await page.getByRole('radio',{name:'Setup and configuration',exact:true}).check();await expect(input).toHaveCount(0);
-    await page.getByRole('radio',{name:'Something else',exact:true}).check();await expect(input).toHaveValue('');await input.fill(details);await next(page);
+    await input.fill('Obsolete frustration');
+    await page.getByRole('checkbox',{name:'Something else',exact:true}).uncheck();await expect(input).toHaveCount(0);
+    await page.getByRole('checkbox',{name:'Something else',exact:true}).check();await expect(input).toHaveValue('');await input.fill(details);await next(page);
     await expect(page.getByRole('heading',{name:'What have you done to make infrastructure work less painful?',exact:true})).toBeVisible();
     await choose(page,'Haven’t tried anything yet');
     await finish(page);
-    const data=await submitted(api);expect(data).toMatchObject({schemaVersion:5,problemCategory:'other',problemEvidence:'experienced'});
+    const data=await submitted(api);expect(data).toMatchObject({schemaVersion:6,problemCategory:['other'],problemEvidence:'experienced'});
     if(details)expect(data.problem).toBe(details.trim());
     else expect(data).not.toHaveProperty('problem');
     expect(data).not.toHaveProperty('monthlySpendUsd');expect(data).not.toHaveProperty('costIsPartOfProblem');
@@ -257,7 +259,7 @@ for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:320
     await page.getByRole('checkbox',{name:'AWS',exact:true}).check();
     await page.getByRole('checkbox',{name:'Ease of use',exact:true}).check();
     await page.screenshot({path:`screenshots/research-burden-${viewport.width}.png`});await next(page);await choose(page,'Takes more time than it should');
-    await page.getByRole('radio',{name:'Something else',exact:true}).check();
+    await page.getByRole('checkbox',{name:'Something else',exact:true}).check();
     await page.getByRole('textbox',{name:'What’s frustrating you? (optional)',exact:true}).fill('I lose a day each week to configuration differences.');
     const bounds=await page.getByRole('dialog').boundingBox();expect(bounds!.y).toBeGreaterThanOrEqual(0);expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(viewport.height+1);
     const footer=await page.getByRole('button',{name:'Continue',exact:true}).boundingBox();expect(footer!.y+footer!.height).toBeLessThan(viewport.height);
@@ -336,10 +338,10 @@ test('custom stack names are normalized and aliases cannot create duplicates',()
 });
 
 test('branch matrix and exported responses omit hidden answers',()=>{
-  for(const stage of choices.stage)for(const burden of choices.burden)for(const category of choices.problemCategory)for(const workaround of choices.workaround){
-    const a:Answers={...emptyAnswers(),context:'side-project',sideProject:'Stale notes',stage:stage.value,burden:burden.value,stack:'Stale stack',stackTools:['AWS'],stackWhy:['cost'],stackWhyOther:'Stale why',problemCategory:category.value,problem:'Stale pain',anticipateIssues:'yes',workingWell:'Stale positive',workaround:workaround.value,workaroundDetails:'Stale fix',outcome:'no',spend:'5000-plus',role:'founder',owner:'me',email:'old@example.com',phone:'old phone'};
+  for(const stage of choices.stage)for(const burden of choices.burden)for(const category of problemCategoryOptions)for(const workaround of choices.workaround){
+    const a:Answers={...emptyAnswers(),context:'side-project',sideProject:'Stale notes',stage:stage.value,burden:burden.value,stack:'Stale stack',stackTools:['AWS'],stackWhy:['cost'],stackWhyOther:'Stale why',problemCategory:[category.value],problem:'Stale pain',anticipateIssues:'yes',workingWell:'Stale positive',workaround:workaround.value,workaroundDetails:'Stale fix',outcome:'no',spend:'5000-plus',role:'founder',owner:'me',email:'old@example.com',phone:'old phone'};
     const steps=stepsFor(a),data=responseFor(a),pain=experiencedPain(a),cost=pain&&category.value==='cost';
-    expect(data.schemaVersion).toBe(5);
+    expect(data.schemaVersion).toBe(6);
     expect(steps.includes('stack')).toBe(isBuilding(a));expect(steps).not.toContain('timeSpent');expect(steps).not.toContain('next');
     expect(steps.includes('workaround')).toBe(pain);expect(steps.includes('outcome')).toBe(pain&&a.workaround==='tried');expect(steps.includes('spend')).toBe(cost);
     expect(steps.slice(-2)).toEqual(['contact','hate']);expect(steps).not.toContain('startup');
@@ -358,14 +360,14 @@ test('branch matrix and exported responses omit hidden answers',()=>{
     if(a.workaround!=='tried'){expect(data).not.toHaveProperty('workaroundDetails');expect(data).not.toHaveProperty('workaroundOutcome');}
     for(const step of steps){expect(JSON.stringify([questionFor(step,a),textQuestionFor(step,a)])).not.toContain('\u2014');}
   }
-  expect(JSON.stringify({...choices,why:stackWhyOptions})).not.toContain('\u2014');
+  expect(JSON.stringify({...choices,why:stackWhyOptions,why2:problemCategoryOptions})).not.toContain('\u2014');
 });
 
 test('changing stage or context resets dependent answers',()=>{
-  const a:Answers={...emptyAnswers(),stage:'building',burden:'slows',stack:'Tools',stackTools:['AWS'],stackWhy:['cost'],stackWhyOther:'Why',problemCategory:'cost',problem:'Pain',anticipateIssues:'yes',workaround:'tried',workaroundDetails:'Fix',outcome:'partly',spend:'50-249'};
+  const a:Answers={...emptyAnswers(),stage:'building',burden:'slows',stack:'Tools',stackTools:['AWS'],stackWhy:['cost'],stackWhyOther:'Why',problemCategory:['cost'],problem:'Pain',anticipateIssues:'yes',workaround:'tried',workaroundDetails:'Fix',outcome:'partly',spend:'50-249'};
   const early=changeAnswer(a,'stage','idea');
-  for(const key of ['stack','burden','problemCategory','problem','anticipateIssues','workaround','workaroundDetails','outcome','spend'])expect(early[key as keyof Answers]).toBe('');
-  expect(early.stackTools).toEqual([]);expect(early.stackWhy).toEqual([]);expect(early.stackWhyOther).toBe('');
+  for(const key of ['stack','burden','problem','anticipateIssues','workaround','workaroundDetails','outcome','spend'])expect(early[key as keyof Answers]).toBe('');
+  expect(early.problemCategory).toEqual([]);expect(early.stackTools).toEqual([]);expect(early.stackWhy).toEqual([]);expect(early.stackWhyOther).toBe('');
   const anticipated={...emptyAnswers(),stage:'idea',burden:'early',anticipateIssues:'yes',problem:'Concerns'};
   expect(changeAnswer(anticipated,'anticipateIssues','no').problem).toBe('');
   expect(changeAnswer(anticipated,'anticipateIssues','unsure').problem).toBe('');
@@ -381,7 +383,7 @@ test('revised option sets replace time and follow-up questions with roles and an
     {value:'slows',label:'Slows down or blocks development'},
     {value:'early',label:'Too early to tell'}
   ]);
-  expect(choices.problemCategory).toEqual([
+  expect(problemCategoryOptions).toEqual([
     {value:'setup',label:'Setup and configuration'},
     {value:'maintenance',label:'Maintenance and security'},
     {value:'testing',label:'Testing and deployments'},
@@ -394,12 +396,14 @@ test('revised option sets replace time and follow-up questions with roles and an
 });
 
 test('context, category, burden, and anticipation changes clear dependent details',()=>{
-  const a:Answers={...emptyAnswers(),context:'other',contextDetails:'An internal tool',sideProject:'Old notes',stage:'building',burden:'slows',problemCategory:'other',problem:'Old frustration',anticipateIssues:'yes',workaround:'tried',workaroundDetails:'Old fix',outcome:'no',spend:'5000-plus',email:'old@example.com'};
-  const categorized=changeAnswer(a,'problemCategory','setup');expect(categorized).toMatchObject({problem:'',spend:''});expect(responseFor(categorized)).not.toHaveProperty('problem');
-  const cost=changeAnswer(a,'problemCategory','cost');expect(cost.problem).toBe('');expect(stepsFor(cost)).toContain('spend');
+  const a:Answers={...emptyAnswers(),context:'other',contextDetails:'An internal tool',sideProject:'Old notes',stage:'building',burden:'slows',problemCategory:['other'],problem:'Old frustration',anticipateIssues:'yes',workaround:'tried',workaroundDetails:'Old fix',outcome:'no',spend:'5000-plus',email:'old@example.com'};
+  const categorized=changeMultiAnswer(a,['setup']);expect(categorized).toMatchObject({problem:'',spend:''});expect(responseFor(categorized)).not.toHaveProperty('problem');
+  const cost=changeMultiAnswer(a,['cost']);expect(cost.problem).toBe('');expect(stepsFor(cost)).toContain('spend');
+  const both=changeMultiAnswer(a,['cost','other']);expect(both.problem).toBe('Old frustration');expect(stepsFor(both)).toContain('spend');expect(responseFor(both)).toMatchObject({problemCategory:['cost','other']});
   for(const burden of ['none','early']){
     const changed=changeAnswer(a,'burden',burden);
-    for(const key of ['problem','problemCategory','anticipateIssues','workaround','workaroundDetails','outcome','spend'])expect(changed[key as keyof Answers]).toBe('');
+    for(const key of ['problem','anticipateIssues','workaround','workaroundDetails','outcome','spend'])expect(changed[key as keyof Answers]).toBe('');
+    expect(changed.problemCategory).toEqual([]);
     expect(stepsFor(changed)).not.toContain('workaround');expect(stepsFor(changed)).not.toContain('spend');
   }
   expect(changeAnswer({...a,burden:'none',workingWell:'Managed hosting'},'burden','time').workingWell).toBe('');

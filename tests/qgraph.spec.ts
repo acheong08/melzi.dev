@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { choices, emptyAnswers, stepsFor } from '../src/lib/research/form';
+import { choices, emptyAnswers, problemCategoryOptions, stepsFor } from '../src/lib/research/form';
 import { graphEdges, graphNodes, graphPath, presets } from '../src/lib/research/question-graph';
 
 async function expectPath(page:Page,steps:string[]){
@@ -86,8 +86,8 @@ for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:320
 
 test('every form branch has graph nodes and connectors with HATE last',()=>{
   const connections=new Set(graphEdges.map(edge=>edge.id));const ids=new Set(graphNodes.map(node=>node.id));const reached=new Set<string>();
-  for(const context of choices.context)for(const stage of choices.stage)for(const burden of choices.burden)for(const workaround of ['',...choices.workaround.map(choice=>choice.value)])for(const problemCategory of ['',...choices.problemCategory.map(choice=>choice.value)]){
-    const answers={...emptyAnswers(),context:context.value,stage:stage.value,burden:burden.value,workaround,problemCategory};
+  for(const context of choices.context)for(const stage of choices.stage)for(const burden of choices.burden)for(const workaround of ['',...choices.workaround.map(choice=>choice.value)])for(const problemCategory of ['',...problemCategoryOptions.map(choice=>choice.value)]){
+    const answers={...emptyAnswers(),context:context.value,stage:stage.value,burden:burden.value,workaround,problemCategory:problemCategory?[problemCategory]:[]};
     const path=graphPath(answers);
     if(path.at(-1)!=='hate'||path.some(id=>!ids.has(id)))throw new Error('Missing graph node or incorrect final question');
     if(JSON.stringify(path.map(id=>id.startsWith('problem-')?'problem':id))!==JSON.stringify(stepsFor(answers)))throw new Error('Graph and form disagree');

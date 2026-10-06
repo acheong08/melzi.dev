@@ -38,7 +38,7 @@ test('visiting creates no credential or server record; first partial answer save
   expect(creation.token).toMatch(/^[A-Za-z0-9_-]{43}$/); expect(creation.challenge).toBeUndefined();
   expect(creation.hash).toBeUndefined(); expect(api.challengeLoads).toBe(0);
   await expect(page.locator('.verification')).toHaveCount(0);
-  expect(creation.body).toMatchObject({ schemaVersion: 5, completed: false, expectedRevision: 0, answers: { context: 'other', contextDetails: '  unfinished details  ', stage: '', stackTools: [], stackWhy: [] } });
+  expect(creation.body).toMatchObject({ schemaVersion: 6, completed: false, expectedRevision: 0, answers: { context: 'other', contextDetails: '  unfinished details  ', stage: '', stackTools: [], stackWhy: [] } });
   await page.reload(); await expect(page.locator('.story-track')).toHaveAttribute('data-scroll-ready', 'true'); await page.getByRole('button', { name: 'Help shape Melzi', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'What are you working on? (optional)' })).toHaveValue('  unfinished details  ');
   expect(api.requests.some(r => r.method === 'GET')).toBe(true);

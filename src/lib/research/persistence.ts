@@ -26,7 +26,7 @@ export function validAnswers(value: unknown): value is Answers {
   if (!value || typeof value !== 'object') return false;
   const a = value as Answers;
   for (const key of Object.keys(emptyAnswers()) as (keyof Answers)[]) {
-    if (key === 'stackTools' || key === 'stackWhy') {
+    if (key === 'stackTools' || key === 'stackWhy' || key === 'problemCategory') {
       if (!Array.isArray(a[key]) || a[key].length > (key === 'stackTools' ? 100 : 16) || a[key].some(v => typeof v !== 'string' || v.length > 80)) return false;
     } else if (typeof a[key] !== 'string' || a[key].length > (key === 'email' ? 254 : key === 'phone' ? 40 : 2000)) return false;
   }
@@ -37,7 +37,7 @@ export function finalValidation(answers: Answers): Step | null {
   if (isTeam(answers) && !answers.role) return 'role';
   if (isBuilding(answers) && (!answers.stackTools.length || !answers.stackWhy.length)) return 'stack';
   if (showsProblem(answers)) {
-    if (experiencedPain(answers)) { if (!answers.problemCategory) return 'problem'; }
+    if (experiencedPain(answers)) { if (!answers.problemCategory.length) return 'problem'; }
     else if (!answers.anticipateIssues) return 'problem';
   }
   if (experiencedPain(answers)) {

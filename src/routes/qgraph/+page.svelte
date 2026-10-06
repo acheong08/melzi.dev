@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { choices, experiencedPain, stepsFor, type Answers, type SingleField } from '#lib/research/form.js';
   import { graphNodes, graphEdges, graphPath, nodeTitle, nodeOptional, edgePath, nodeWidth, nodeHeight, graphWidth, graphHeight, presets, type GraphNode } from '#lib/research/question-graph.js';
+import { problemCategoryOptions } from '#lib/research/form.js';
   let answers=$state<Answers>({...presets[0].answers,stackTools:[]});
   let ready=$state(false);
   let zoom=$state(.75);
@@ -13,9 +14,10 @@
   const edges=$derived([...graphEdges].sort((a,b)=>Number(activeEdges.has(a.id))-Number(activeEdges.has(b.id))));
   const experienced=$derived(experiencedPain(answers));
   const primaryControls: {field:SingleField;label:string}[]=[{field:'context',label:'Project context'},{field:'stage',label:'Project stage'},{field:'burden',label:'Infrastructure burden'}];
-  function setAnswer(field:SingleField,value:string){
-    answers={...answers,[field]:value};
-    if(!experiencedPain(answers)){answers.workaround='';answers.problemCategory='';}
+  function setAnswer(field:'problemCategory'|SingleField,value:string){
+    if(field==='problemCategory'){answers={...answers,problemCategory:value?[value]:[]};}
+    else answers={...answers,[field]:value};
+    if(!experiencedPain(answers)){answers.workaround='';answers.problemCategory=[];}
   }
   function selectPreset(id:string){const preset=presets.find(p=>p.id===id)!;answers={...preset.answers,stackTools:[]};}
   onMount(()=>{ready=true;viewport.scrollLeft=Math.max(0,(graphWidth*zoom+32-viewport.clientWidth)/2);});
@@ -41,11 +43,11 @@
           <div class="presets" aria-label="Example paths">{#each presets as preset}<button type="button" onclick={()=>selectPreset(preset.id)}>{preset.label}</button>{/each}</div>
           {#each primaryControls as control}<label class="control" for={`graph-${control.field}`}><span>{control.label}</span><select id={`graph-${control.field}`} value={answers[control.field]} onchange={event=>setAnswer(control.field,event.currentTarget.value)}>{#each choices[control.field] as option}<option value={option.value}>{option.label}</option>{/each}</select></label>{/each}
           <label class="control" for="graph-workaround"><span>What have they tried?</span><select id="graph-workaround" disabled={!experienced} value={answers.workaround} onchange={event=>setAnswer('workaround',event.currentTarget.value)}><option value="">Skipped / no answer</option>{#each choices.workaround as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
-          <label class="control" for="graph-problem"><span>Main frustration</span><select id="graph-problem" disabled={!experienced} value={answers.problemCategory} onchange={event=>setAnswer('problemCategory',event.currentTarget.value)}><option value="">Skipped / no answer</option>{#each choices.problemCategory as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
+          <label class="control" for="graph-problem"><span>Main frustration</span><select id="graph-problem" disabled={!experienced} value={answers.problemCategory[0]??''} onchange={event=>setAnswer('problemCategory',event.currentTarget.value)}><option value="">Skipped / no answer</option>{#each problemCategoryOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
           <p class="scenario-note">Only these choices affect branching. Written answers, role, owner, outcome, spend, and tool selections do not add questions.</p>
         </fieldset>
       </details>
-      <section class="route-panel" aria-labelledby="path-heading"><h2 id="path-heading">This answer path <span aria-live="polite">{steps.length} steps</span></h2><ol aria-label="Current question order">{#each path as id,index}{@const node=graphNodes.find(n=>n.id===id)!}<li data-path-step={node.step}><span class="number">{index+1}</span><span>{nodeTitle(node,answers)}{#if node.step==='context' && answers.context==='other'}<small>Includes an optional project-description textbox.</small>{/if}{#if node.id==='problem-experienced' && answers.problemCategory==='other'}<small>Includes the “What’s frustrating you?” textbox.</small>{/if}{#if node.step==='workaround' && answers.workaround==='tried'}<small>Includes the “What have you tried?” textbox.</small>{/if}{#if node.step==='startup'}<small>Infrastructure owner.</small>{/if}</span></li>{/each}</ol></section>
+      <section class="route-panel" aria-labelledby="path-heading"><h2 id="path-heading">This answer path <span aria-live="polite">{steps.length} steps</span></h2><ol aria-label="Current question order">{#each path as id,index}{@const node=graphNodes.find(n=>n.id===id)!}<li data-path-step={node.step}><span class="number">{index+1}</span><span>{nodeTitle(node,answers)}{#if node.step==='context' && answers.context==='other'}<small>Includes an optional project-description textbox.</small>{/if}{#if node.id==='problem-experienced' && answers.problemCategory.includes('other')}<small>Includes the “What’s frustrating you?” textbox.</small>{/if}{#if node.step==='workaround' && answers.workaround==='tried'}<small>Includes the “What have you tried?” textbox.</small>{/if}{#if node.step==='startup'}<small>Infrastructure owner.</small>{/if}</span></li>{/each}</ol></section>
     </aside>
     <section class="map-panel" aria-labelledby="map-heading">
       <div class="map-toolbar"><div><h2 id="map-heading">All possible branches</h2><div class="legend"><span><i class="selected-key"></i>Selected path</span><span><i></i>Not in this path</span></div></div><div class="zoom-controls" aria-label="Map zoom"><button type="button" aria-label="Zoom out" disabled={zoom<=.25} onclick={()=>setZoom(Math.max(.25,zoom-.15))}>−</button><output aria-label="Zoom level">{Math.round(zoom*100)}%</output><button type="button" aria-label="Zoom in" disabled={zoom>=1.3} onclick={()=>setZoom(Math.min(1.3,zoom+.15))}>+</button><button type="button" onclick={fit}>Fit width</button></div></div>

@@ -2,16 +2,16 @@
 // Imports validation/model only: no handler, database, AWS SDK, or credentials.
 import { describe, test, expect } from 'bun:test';
 import { ApiFailure, parseMutation, projectedResponse, validateAnswers } from './validation.ts';
-import { choices, emptyAnswers, stackWhyOptions, stepsFor, type Answers } from '../../src/lib/research/form.ts';
+import { choices, emptyAnswers, problemCategoryOptions, stackWhyOptions, stepsFor, type Answers } from '../../src/lib/research/form.ts';
 import { MAX_REQUEST_BYTES, type SaveRequest } from '../../src/lib/research/persistence-contract.ts';
 
 const mutationId = '462468e4-df28-4ad1-bcd3-34cd95e404aa';
 function request(overrides: Record<string, unknown> = {}) {
-  return { schemaVersion: 5, answers: emptyAnswers(), step: 'context', completed: false, expectedRevision: 0, mutationId, ...overrides };
+  return { schemaVersion: 6, answers: emptyAnswers(), step: 'context', completed: false, expectedRevision: 0, mutationId, ...overrides };
 }
 function parse(overrides: Record<string, unknown> = {}): SaveRequest { return parseMutation(JSON.stringify(request(overrides))); }
 function finalAnswers(overrides: Partial<Answers> = {}): Answers {
-  return { ...emptyAnswers(), context: 'startup', stage: 'building', burden: 'time', role: 'founder', stackTools: ['AWS'], stackWhy: ['cost'], problemCategory: 'setup', workaround: 'nothing', owner: 'me', email: 'person@example.com', ...overrides };
+  return { ...emptyAnswers(), context: 'startup', stage: 'building', burden: 'time', role: 'founder', stackTools: ['AWS'], stackWhy: ['cost'], problemCategory: ['setup'], workaround: 'nothing', owner: 'me', email: 'person@example.com', ...overrides };
 }
 function expectFailure(callback: () => unknown, status = 400, code?: string) {
   let caught: unknown;
@@ -43,7 +43,7 @@ describe('partial and completed draft validation', () => {
   });
   for (const field of ['context', 'stage', 'burden', 'role', 'owner', 'problemCategory'] as const) {
     test(`completion requires ${field}`, () => {
-      expectFailure(() => parse({ answers: finalAnswers({ [field]: '' }), completed: true, step: 'hate' }), 400, 'incomplete');
+      expectFailure(() => parse({ answers: finalAnswers({ [field]: field === 'problemCategory' ? [] : '' }), completed: true, step: 'hate' }), 400, 'incomplete');
     });
   }
   for (const [field, empty] of [['stackTools', []], ['stackWhy', []]] as const) {
@@ -57,13 +57,13 @@ describe('partial and completed draft validation', () => {
     expect(parse({ answers: finalAnswers({ workaround: 'tried', outcome: 'solved' }), completed: true, step: 'hate' }).completed).toBe(true);
   });
   test('completion requires the anticipated-issues answer instead of the experienced category', () => {
-    expect(parse({ answers: { ...finalAnswers(), burden: 'early', anticipateIssues: 'unsure', problemCategory: '' }, completed: true, step: 'hate' }).completed).toBe(true);
-    expectFailure(() => parse({ answers: { ...finalAnswers(), burden: 'early', anticipateIssues: '', problemCategory: '' }, completed: true, step: 'hate' }), 400, 'incomplete');
+    expect(parse({ answers: { ...finalAnswers(), burden: 'early', anticipateIssues: 'unsure', problemCategory: [] }, completed: true, step: 'hate' }).completed).toBe(true);
+    expectFailure(() => parse({ answers: { ...finalAnswers(), burden: 'early', anticipateIssues: '', problemCategory: [] }, completed: true, step: 'hate' }), 400, 'incomplete');
     expect(parse({ answers: { ...finalAnswers(), burden: 'none' }, completed: true, step: 'hate' }).completed).toBe(true);
   });
   test('cost complaints require the spend answer on completion', () => {
-    expectFailure(() => parse({ answers: finalAnswers({ problemCategory: 'cost', spend: '' }), completed: true, step: 'hate' }), 400, 'incomplete');
-    expect(parse({ answers: finalAnswers({ problemCategory: 'cost', spend: '50-249' }), completed: true, step: 'hate' }).completed).toBe(true);
+    expectFailure(() => parse({ answers: finalAnswers({ problemCategory: ['cost'], spend: '' }), completed: true, step: 'hate' }), 400, 'incomplete');
+    expect(parse({ answers: finalAnswers({ problemCategory: ['cost'], spend: '50-249' }), completed: true, step: 'hate' }).completed).toBe(true);
   });
   test('completion always requires a valid email', () => {
     expect(parse({ answers: finalAnswers({ email: 'person+research@example.com' }), completed: true, step: 'hate' }).completed).toBe(true);
@@ -109,7 +109,7 @@ describe('strict shape, schema, UUID, revision, and paths', () => {
     for (const value of [null, [], 'text', 1, new Date(), Object.create(null)]) expectFailure(() => validateAnswers(value), 400, 'invalid_answers');
   });
   test('schema version and completed are not coercible', () => {
-    for (const schemaVersion of [3, 4, '5', null, false]) expectFailure(() => parse({ schemaVersion }), 400, 'invalid_request');
+    for (const schemaVersion of [3, 4, 5, '6', null, false]) expectFailure(() => parse({ schemaVersion }), 400, 'invalid_request');
     for (const completed of ['false', 0, 1, null]) expectFailure(() => parse({ completed }), 400, 'invalid_request');
   });
   test('accept canonical UUID v4 values with either hex case', () => {
@@ -129,7 +129,7 @@ describe('strict shape, schema, UUID, revision, and paths', () => {
     for (const step of ['not-a-step', 'stack', 'workaround', 'outcome', 'startup', 'role', 'sideProject', 1, null]) expectFailure(() => parse({ step }), 400, 'invalid_step');
   });
   test('all applicable paths from a populated draft are accepted', () => {
-    const answers = finalAnswers({ stage: 'stable', burden: 'slows', problemCategory: 'cost', workaround: 'tried', email: 'in-progress@' });
+    const answers = finalAnswers({ stage: 'stable', burden: 'slows', problemCategory: ['cost'], workaround: 'tried', email: 'in-progress@' });
     for (const step of stepsFor(answers)) expect(parse({ answers, step }).step).toBe(step);
   });
 });
@@ -182,6 +182,12 @@ describe('text, choices, tools, and byte limits', () => {
   test('tool duplicates are rejected after case and whitespace normalization', () => {
     for (const stackTools of [['PostgreSQL', 'PostgreSQL'], ['PostgreSQL', 'postgresql'], ['Bespoke Tool', '  bespoke   tool ']]) expectFailure(() => validateAnswers({ ...emptyAnswers(), stackTools }), 400, 'invalid_answers');
   });
+  test('problem categories accept multiple distinct enum values and reject unknown ones', () => {
+    expect(validateAnswers({ ...emptyAnswers(), stage: 'building', burden: 'slows', problemCategory: ['cost', ' setup '] }).problemCategory).toEqual(['cost', 'setup']);
+    expect(validateAnswers({ ...emptyAnswers(), stage: 'building', burden: 'slows', problemCategory: ['cost', 'setup', 'testing', 'maintenance', 'other'] }).problemCategory).toHaveLength(5);
+    for (const problemCategory of [['not-a-category'], ['cost', 'COST'], 'not-an-array', null, [null], [42]]) expectFailure(() => validateAnswers({ ...emptyAnswers(), stage: 'building', burden: 'slows', problemCategory }), 400, 'invalid_answers');
+    expect(validateAnswers({ ...emptyAnswers(), problemCategory: ['cost'] }).problemCategory).toEqual([]);
+  });
   test('stack reasons are limited to the declared enum, deduplicated, and capped', () => {
     expect(validateAnswers({ ...emptyAnswers(), stage: 'building', stackTools: ['AWS'], stackWhy: ['cost', ' ease '] }).stackWhy).toEqual(['cost', 'ease']);
     expect(validateAnswers({ ...emptyAnswers(), stage: 'building', stackTools: ['AWS'], stackWhy: stackWhyOptions.map(option => option.value) }).stackWhy).toHaveLength(stackWhyOptions.length);
@@ -212,7 +218,7 @@ describe('text, choices, tools, and byte limits', () => {
 });
 
 describe('server-side branch pruning and final projection', () => {
-  const populated = (): Answers => ({ ...emptyAnswers(), context: 'startup', contextDetails: 'hidden context', sideProject: 'hidden notes', stage: 'stable', stack: 'hidden stack text', stackTools: ['PostgreSQL', 'Other'], stackWhy: ['cost', 'other'], stackWhyOther: 'hidden why', burden: 'slows', problemCategory: 'other', problem: 'real pain', anticipateIssues: 'yes', workingWell: 'hidden positive', workaround: 'tried', workaroundDetails: 'details', outcome: 'partly', role: 'founder', owner: 'me', spend: '50-249', email: 'person@example.com', phone: '+1 555 000 0000', hate: 'Nothing else' });
+  const populated = (): Answers => ({ ...emptyAnswers(), context: 'startup', contextDetails: 'hidden context', sideProject: 'hidden notes', stage: 'stable', stack: 'hidden stack text', stackTools: ['PostgreSQL', 'Other'], stackWhy: ['cost', 'other'], stackWhyOther: 'hidden why', burden: 'slows', problemCategory: ['other'], problem: 'real pain', anticipateIssues: 'yes', workingWell: 'hidden positive', workaround: 'tried', workaroundDetails: 'details', outcome: 'partly', role: 'founder', owner: 'me', spend: '50-249', email: 'person@example.com', phone: '+1 555 000 0000', hate: 'Nothing else' });
   test('non-other context drops context details; non-team context drops team details', () => {
     expect(validateAnswers(populated()).contextDetails).toBe('');
     const result = validateAnswers({ ...populated(), context: 'other', contextDetails: 'kept' });
@@ -231,34 +237,37 @@ describe('server-side branch pruning and final projection', () => {
   });
   test('idea stage drops building-specific answers but retains anticipated answers', () => {
     const result = validateAnswers({ ...populated(), stage: 'idea' });
-    for (const field of ['stack', 'stackWhyOther', 'workingWell', 'problemCategory', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
+    for (const field of ['stack', 'stackWhyOther', 'workingWell', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
+    expect(result.problemCategory).toEqual([]);
     expect(result.stackTools).toEqual([]);expect(result.stackWhy).toEqual([]);
     expect(result.anticipateIssues).toBe('yes');expect(result.problem).toBe('real pain');
   });
   test('no burden keeps working-well and discards all pain follow-ups', () => {
     const result = validateAnswers({ ...populated(), burden: 'none' });
     expect(result.workingWell).toBe('hidden positive');
-    for (const field of ['problem', 'problemCategory', 'anticipateIssues', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
+    for (const field of ['problem', 'anticipateIssues', 'workaround', 'workaroundDetails', 'outcome', 'spend'] as const) expect(result[field]).toBe('');
+    expect(result.problemCategory).toEqual([]);
   });
   test('unanswered burden clears problem details', () => {
     const result = validateAnswers({ ...populated(), burden: '' });
     expect(result.problem).toBe('');
-    expect(result.problemCategory).toBe('');
+    expect(result.problemCategory).toEqual([]);
     expect(result.workingWell).toBe('');
   });
   test('early burden keeps anticipated answers only when issues are expected', () => {
     expect(validateAnswers({ ...populated(), burden: 'early' }).problem).toBe('real pain');
-    for (const field of ['problemCategory', 'workaround', 'workaroundDetails', 'outcome', 'spend', 'workingWell'] as const) expect(validateAnswers({ ...populated(), burden: 'early' })[field]).toBe('');
+    for (const field of ['workaround', 'workaroundDetails', 'outcome', 'spend', 'workingWell'] as const) expect(validateAnswers({ ...populated(), burden: 'early' })[field]).toBe('');
+    expect(validateAnswers({ ...populated(), burden: 'early' }).problemCategory).toEqual([]);
     expect(validateAnswers({ ...populated(), burden: 'early', anticipateIssues: 'no' }).problem).toBe('');
     expect(validateAnswers({ ...populated(), burden: 'early', anticipateIssues: 'unsure' }).problem).toBe('');
   });
   test('experienced other-category preserves text; cost preserves spend instead', () => {
     expect(validateAnswers(populated()).problem).toBe('real pain');
     expect(validateAnswers(populated()).spend).toBe('');
-    const cost = validateAnswers({ ...populated(), problemCategory: 'cost' });
+    const cost = validateAnswers({ ...populated(), problemCategory: ['cost'] });
     expect(cost.problem).toBe('');
     expect(cost.spend).toBe('50-249');
-    const setup = validateAnswers({ ...populated(), problemCategory: 'setup' });
+    const setup = validateAnswers({ ...populated(), problemCategory: ['setup'] });
     expect(setup.problem).toBe('');
     expect(setup.spend).toBe('');
   });
@@ -288,7 +297,7 @@ describe('server-side branch pruning and final projection', () => {
   test('projection contains only applicable research fields and no owner/session metadata', () => {
     const answers = validateAnswers({ ...populated(), context: 'other', stage: 'idea', burden: 'early', hate: '  Free text  ' });
     const summary = projectedResponse(answers);
-    expect(summary).toMatchObject({ schemaVersion: 5, context: 'other', stage: 'idea', problemEvidence: 'anticipated', anticipatedIssues: 'yes', anticipatedIssueDetails: 'real pain', email: 'person@example.com', anythingYouHate: 'Free text' });
+    expect(summary).toMatchObject({ schemaVersion: 6, context: 'other', stage: 'idea', problemEvidence: 'anticipated', anticipatedIssues: 'yes', anticipatedIssueDetails: 'real pain', email: 'person@example.com', anythingYouHate: 'Free text' });
     for (const key of ['stack', 'stackTools', 'stackWhy', 'role', 'infrastructureOwner', 'workaroundStatus', 'workaroundOutcome', 'monthlySpendUsd', 'nextStep', 'weeklyInfrastructureTime', 'token', 'token_hash', 'mutationId', 'expectedRevision']) expect(key in summary).toBe(false);
   });
 });

@@ -30,7 +30,7 @@ export async function mockResearchApi(page: Page, provider: 'azure' | 'aws' | 't
     if ((method === 'POST' && record) || (method === 'PUT' && record?.revision !== body!.expectedRevision)) return fail(409, 'revision_conflict');
     if (state.holdFinal && body!.completed) await new Promise<void>(resolve => { state.releaseFinal = resolve; });
     const result = { revision: body!.expectedRevision + 1, savedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + (body!.completed ? 365 : 30) * 86400000).toISOString(), completed: body!.completed };
-    state.records.set(token, { schemaVersion: 5, answers: body!.answers, step: body!.step, ...result });
+    state.records.set(token, { schemaVersion: 6, answers: body!.answers, step: body!.step, ...result });
     state.mutations.set(key, { body: JSON.stringify(body), result });
     if (state.loseNextAck) { state.loseNextAck = false; return route.abort('failed'); }
     return route.fulfill({ json: result });

@@ -1,6 +1,6 @@
 import type { Answers, Step } from './form.js';
 
-export const ANSWER_SCHEMA_VERSION = 5 as const;
+export const ANSWER_SCHEMA_VERSION = 6 as const;
 export const MAX_REQUEST_BYTES = 65_536;
 export type DraftSnapshot = {
   schemaVersion: typeof ANSWER_SCHEMA_VERSION;
