@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import Hero from '#lib/components/hero/Hero.svelte';
   import HeroCopy from '#lib/components/hero/HeroCopy.svelte';
   import ResearchPreview from '#lib/components/hero/ResearchPreview.svelte';
@@ -17,7 +18,14 @@
     const next=((index+heroContent.features.length)%heroContent.features.length) as SlideIndex;
     hero?.goToSlide(next);
   }
-  onMount(()=>{ready=true;});
+  onMount(()=>{
+    ready=true;
+    if(new URLSearchParams(location.search).get('research')==='open')researchOpen=true;
+  });
+  function closeResearch(){
+    researchOpen=false;
+    void goto('/', { shallow: true, replace: true });
+  }
 </script>
 <svelte:head>
   <title>Melzi | {heroContent.tagline}</title>
@@ -29,5 +37,5 @@
   {#snippet copyContent()}<HeroCopy {active} onselect={select} onaction={()=>researchOpen=true} />{/snippet}
   {#snippet diagramContent()}<DiagramSlides slide={active} />{/snippet}
   <Hero bind:this={hero} copy={copyContent} diagram={diagramContent} onprogress={updateProgress} />
-  <ResearchPreview open={researchOpen} onclose={()=>researchOpen=false} />
+  <ResearchPreview open={researchOpen} onclose={closeResearch} />
 </main>
