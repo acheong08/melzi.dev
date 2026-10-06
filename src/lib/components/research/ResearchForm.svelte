@@ -97,6 +97,14 @@ $effect(() => {
 		);
 });
 let error = $state("");
+let errorEl = $state<HTMLParagraphElement>();
+$effect(() => {
+	if (error) void scrollToError();
+});
+async function scrollToError() {
+	await tick();
+	errorEl?.scrollIntoView({ block: "nearest" });
+}
 let body: HTMLDivElement;
 let heading: HTMLHeadingElement;
 let emailInput = $state<HTMLInputElement>();
@@ -318,7 +326,7 @@ function close() {
         <input id="research-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" bind:value={answers.phone} placeholder="+1 555 000 0000" />
       </div>
     {/if}
-    {#if error}<p id="form-error" class="error" role="alert">{error}</p>{/if}
+    {#if error}<p id="form-error" class="error" role="alert" bind:this={errorEl}>{error}</p>{/if}
     {#if save.submitting}<p class="save-help" role="status">Submission pending. Your feedback is not submitted until the server confirms it. {save.state==='offline'?'Connect to the internet to submit.':'You can keep this form open or return later.'}</p>{/if}
     {#if save.warning}<p class="save-warning" role="alert">{save.warning}</p>{/if}
     {#if ['retrying','offline','storage','verification'].includes(save.state)}<button class="secondary" type="button" onclick={()=>persistence.retry()}>Retry save</button>{/if}
