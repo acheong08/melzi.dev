@@ -4,6 +4,9 @@ Backend for the research draft API (`/v1/draft`, contract in
 `src/lib/research/persistence-contract.ts`). Copied from prototype-v2 with
 imports retargeted to `../../src/lib`.
 
+The public site no longer ships the questionnaire, so nothing in the static
+build calls this API. It is kept for research runs that use it directly.
+
 ## Layout
 
 - `backend/` - provider-agnostic core: request handler, validation, database,

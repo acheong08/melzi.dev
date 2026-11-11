@@ -1,3 +1,3 @@
-# allow crawling everything by default
+# everything here is intentionally undiscoverable while the company is in stealth
 User-agent: *
-Disallow:
+Disallow: /

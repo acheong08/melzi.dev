@@ -24,18 +24,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Check required variables
-        env:
-          VITE_RESEARCH_API_URL: ${{ vars.VITE_RESEARCH_API_URL }}
-        run: |
-          if [ -z "$VITE_RESEARCH_API_URL" ]; then
-            echo "Set the VITE_RESEARCH_API_URL repository variable to an explicit HTTPS API base (Settings > Secrets and variables > Actions > Variables)."
-            exit 1
-          fi
       - name: Build
-        env:
-          VITE_RESEARCH_SECURITY_PROVIDER: azure
-          VITE_RESEARCH_API_URL: ${{ vars.VITE_RESEARCH_API_URL }}
         run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
